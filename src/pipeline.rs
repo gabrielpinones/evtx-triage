@@ -242,8 +242,14 @@ mod tests {
 
     fn make_event(sec: i64, record_id: Option<u64>, event_id: Option<u32>) -> TimelineEvent {
         let ts = Timestamp::from_second(sec).unwrap();
-        let mut ev =
-            TimelineEvent::new(ts, "host", SourceKind::Evtx, EventKind::LogClear, "f.evtx");
+        // A kind that no detection rule flags, so tests control the flags.
+        let mut ev = TimelineEvent::new(
+            ts,
+            "host",
+            SourceKind::Evtx,
+            EventKind::UserCreate,
+            "f.evtx",
+        );
         ev.record_id = record_id;
         ev.event_id = event_id;
         ev
