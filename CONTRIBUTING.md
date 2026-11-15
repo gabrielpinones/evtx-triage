@@ -33,7 +33,7 @@ CI runs these commands on `ubuntu-latest` and `windows-latest`.
 - `src/model.rs`: normalized `TimelineEvent`, `EventKind`, `SourceKind`, `Severity`, `Flag`, and `format_ts`.
 - `src/pipeline.rs`: `run_timeline`, recursive file collection, filtering, sorting, detection, and `RunSummary`.
 - `src/source/mod.rs`: `Source` trait, `Format` enum, `detect_format`, `detect_format_bytes`, and `source_for`.
-- `src/source/evtx/`: `EvtxSource` and per-event extractors (`account`, `fields`, `logon`, `powershell`, `process`, `reader`, `service`, `task`).
+- `src/source/evtx/`: `EvtxSource`, the dispatch table (`dispatch`) and per-event extractors (`account`, `fields`, `kerberos`, `logon`, `powershell`, `process`, `reader`, `service`, `task`).
 - `src/source/journald.rs`: `JournaldSource` for `journalctl -o json` exports.
 - `src/source/auditd.rs`: `AuditdSource` for Linux `audit.log` files.
 - `src/detect/mod.rs`: `Rule` trait, `DetectOptions`, `default_rules`, and `run`, with rules in `encoded_powershell`, `remote_logon_service`, and `extras`.
@@ -51,7 +51,7 @@ Treat input files as hostile. Avoid `unwrap` or `expect` on log data outside tes
 
 Count and skip bad records instead of failing the run. `Source::read` records unreadable lines, records, or chunks in `SourceStats::errors` and returns `Err` only when a file as a whole cannot be read, so damaged logs still yield a partial timeline with exit status 2.
 
-Dispatch Windows events by provider and event ID. `src/source/evtx/reader.rs` matches `(provider, event_id)` in `is_supported` and `read_file` rather than `EventID` alone, because IDs such as `1` and `4104` mean different things under different providers.
+Dispatch Windows events by provider and event ID. `HANDLERS` in `src/source/evtx/dispatch.rs` keys every entry on `(provider, event_id)` rather than `EventID` alone, because IDs such as `1`, `104` and `4104` mean different things under different providers.
 
 Use `snake_case` keys in `TimelineEvent::details`. Matching the `snake_case` enum serialization keeps JSONL output uniform for downstream tools.
 
@@ -60,9 +60,9 @@ Keep output deterministic. `collect_files` sorts directory entries by file name,
 ## Add a Windows event type
 
 1. If no existing `EventKind` in `src/model.rs` fits, add a variant and update `EventKind::as_str`.
-2. Add `(provider, event_id)` to `is_supported` and the `match (provider, event_id)` in `src/source/evtx/reader.rs`.
-3. Write an extractor function using helpers from `src/source/evtx/fields.rs` in the matching `src/source/evtx/*.rs` module, along with unit tests built from `serde_json::json!` and `RecordMeta`.
-4. Add or update a test in `src/source/evtx/reader.rs`, and update `tests/timeline_cli.rs` if the fixture outputs change.
+2. Write an extractor in the matching `src/source/evtx/*.rs` module with the helpers from `src/source/evtx/fields.rs`, and unit tests built from `serde_json::json!` records in the real shape.
+3. Add one line for `(provider, event_id)` to `HANDLERS` in `src/source/evtx/dispatch.rs`. That table is the only list of supported events: the reader's early skip and the dispatch both read it, and its tests check every entry is handled.
+4. If a fixture now produces more events, update the per-kind counts in its test in `src/source/evtx/reader.rs` and regenerate the golden files. Totals in the integration tests come from `tests/golden/windows.jsonl`, so they need no edit.
 5. Add the event to the `Events` table in `README.md`.
 
 ## Add a detection rule

@@ -571,14 +571,23 @@ fn every_jsonl_event_across_all_fixtures_matches_schema() {
         "logon_success",
         "logon_failure",
         "explicit_logon",
+        "logoff",
+        "special_privileges",
         "process_create",
         "task_create",
+        "task_delete",
+        "task_update",
         "user_create",
+        "group_member_add",
         "log_clear",
         "service_install",
         "script_block",
         "privileged_command",
         "service_start",
+        "kerberos_tgt",
+        "kerberos_service_ticket",
+        "kerberos_preauth_failure",
+        "ntlm_auth",
     ]);
 
     for (idx, event) in events.iter().enumerate() {

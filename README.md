@@ -47,11 +47,22 @@ All times are UTC. Colors follow `NO_COLOR` and `CLICOLOR_FORCE`.
 |---|---|---|
 | Security | 4624 | `logon_success` |
 | Security | 4625 | `logon_failure` |
+| Security | 4634, 4647 | `logoff` |
 | Security | 4648 | `explicit_logon` |
+| Security | 4672 | `special_privileges` |
 | Security | 4688 | `process_create` |
+| Security | 4697 | `service_install` |
 | Security | 4698 | `task_create` |
+| Security | 4699 | `task_delete` |
+| Security | 4702 | `task_update` |
 | Security | 4720 | `user_create` |
+| Security | 4728, 4732, 4756 | `group_member_add` |
+| Security | 4768 | `kerberos_tgt` |
+| Security | 4769 | `kerberos_service_ticket` |
+| Security | 4771 | `kerberos_preauth_failure` |
+| Security | 4776 | `ntlm_auth` |
 | Security | 1102 | `log_clear` |
+| System | 104 | `log_clear` |
 | System | 7045 | `service_install` |
 | Sysmon | 1 | `process_create` |
 | PowerShell | 4104 | `script_block` |
@@ -69,7 +80,7 @@ These are simple heuristics and they give false positives. They help decide wher
 | `remote_logon_then_service` | high | A service is installed (7045) up to 5 minutes after a network logon (4624 type 3) on the same host. This is the trace PsExec leaves. |
 | `encoded_powershell` | high | A command line carries `-EncodedCommand` or any of its abbreviations and the argument decodes to text. The flag includes the decoded command. |
 | `encoded_powershell` | medium | A script or command calls `FromBase64String`. |
-| `log_cleared` | high | Someone cleared the audit log (1102). |
+| `log_cleared` | high | Someone cleared the Security log (1102) or another event log (104). |
 | `service_suspicious_path` | medium | A new service runs from `Temp`, `ADMIN$` or a UNC path, runs a command interpreter (`cmd`, PowerShell) or `rundll32` and the like, or has an image path with no directory. |
 | `failed_logon_burst` | medium | Five failed logons on one host from the same origin inside the window. |
 | `logon_after_failed_burst` | high | A successful logon from that same origin after the burst. |
@@ -122,7 +133,8 @@ What a summary of the format leaves out, and what showed up when testing against
 
 ## Limits
 
-- About ten event types. No Sigma engine, no live analysis, no memory or disk forensics.
+- Two dozen Windows event types. No Sigma engine, no live analysis, no memory or disk forensics.
+- 4647, 4697, 4728 and 4756 do not appear in any of the public samples used; their extractors are tested with records built from the documented schema.
 - Binary XML is decoded by the [`evtx`](https://github.com/omerbenamram/evtx) crate. The hand-written parser stops at the record framing.
 - `remote_logon_then_service` is tested with hand-built events. Among the 278 public samples used, there is no pair of Security and System logs from the same host and time where it could be seen firing.
 - The Linux fixtures are synthetic. The journald reader was also checked against a real export of 20000 entries; the auditd reader has not been run on a real log.

@@ -99,6 +99,32 @@ fn parse_jsonl(bytes: &[u8]) -> Vec<Value> {
         .collect()
 }
 
+fn golden_windows_count() -> usize {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden/windows.jsonl");
+    std::fs::read_to_string(path)
+        .expect("golden windows.jsonl exists")
+        .lines()
+        .filter(|line| !line.is_empty())
+        .count()
+}
+
+fn baseline_event_count(path: &std::path::Path) -> usize {
+    let output = run_cli_paths(["timeline".as_ref(), path.as_os_str()]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "baseline timeline failed: {}",
+        stderr_str(&output)
+    );
+    let count = parse_jsonl(&output.stdout).len();
+    assert!(
+        count > 0,
+        "baseline fixture {} produced no events",
+        path.display()
+    );
+    count
+}
+
 /// Extracts `--flag` names for every `#[arg(...)]` option in `TimelineArgs`
 /// from `src/cli.rs` so new options cannot be omitted from help untested.
 fn timeline_option_flags_from_source() -> Vec<String> {
@@ -421,8 +447,9 @@ fn from_accepts_utc_fractional_and_offset_timestamps() {
         assert_eq!(args.from, Some(expected), "--from {raw}");
     }
 
-    // Event in Security_short_selected.evtx is at 2016-06-29T15:24:36.686000Z.
+    // Events in Security_short_selected.evtx are at 2016-06-29T15:24:36.686000Z.
     let sample = fixture("format/Security_short_selected.evtx");
+    let expected = baseline_event_count(&sample);
     let output = run_cli_paths([
         "timeline".as_ref(),
         "--from".as_ref(),
@@ -435,7 +462,7 @@ fn from_accepts_utc_fractional_and_offset_timestamps() {
         "stderr: {}",
         stderr_str(&output)
     );
-    assert_eq!(parse_jsonl(&output.stdout).len(), 1);
+    assert_eq!(parse_jsonl(&output.stdout).len(), expected);
 }
 
 #[test]
@@ -496,6 +523,7 @@ fn short_and_long_output_and_quiet_flags_are_equivalent() {
     let dir = tempfile::tempdir().unwrap();
     let out_path = dir.path().join("out.jsonl");
     let sample = fixture("format/Security_short_selected.evtx");
+    let expected = baseline_event_count(&sample);
     let output = run_cli_paths([
         "timeline".as_ref(),
         "--output".as_ref(),
@@ -506,7 +534,7 @@ fn short_and_long_output_and_quiet_flags_are_equivalent() {
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stdout.is_empty());
     assert!(output.stderr.is_empty());
-    assert_eq!(parse_jsonl(&fs::read(&out_path).unwrap()).len(), 1);
+    assert_eq!(parse_jsonl(&fs::read(&out_path).unwrap()).len(), expected);
 }
 
 #[test]
@@ -577,8 +605,10 @@ fn path_beginning_with_dash_works_after_double_dash() {
     assert_eq!(args.paths, vec![PathBuf::from("-weird.evtx")]);
 
     let dir = tempfile::tempdir().unwrap();
+    let sample = fixture("format/Security_short_selected.evtx");
+    let expected = baseline_event_count(&sample);
     let target = dir.path().join("-weird.evtx");
-    fs::copy(fixture("format/Security_short_selected.evtx"), &target).unwrap();
+    fs::copy(&sample, &target).unwrap();
 
     let output = base_cmd()
         .current_dir(dir.path())
@@ -592,8 +622,8 @@ fn path_beginning_with_dash_works_after_double_dash() {
         stderr_str(&output)
     );
     let events = parse_jsonl(&output.stdout);
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0]["file"], "-weird.evtx");
+    assert_eq!(events.len(), expected);
+    assert!(events.iter().all(|event| event["file"] == "-weird.evtx"));
 }
 
 // ---------------------------------------------------------------------------
@@ -688,11 +718,12 @@ fn timeline_puts_events_on_stdout_and_summary_and_cli_warnings_on_stderr() {
     let skipped = dir.path().join("notes.txt");
     fs::write(&skipped, b"plain text\n").unwrap();
     let sample = fixture("format/Security_short_selected.evtx");
+    let expected = baseline_event_count(&sample);
 
     let output = run_cli_paths(["timeline".as_ref(), sample.as_os_str(), skipped.as_os_str()]);
     assert_eq!(output.status.code(), Some(0), "status: {:?}", output.status);
     let events = parse_jsonl(&output.stdout);
-    assert_eq!(events.len(), 1);
+    assert_eq!(events.len(), expected);
 
     let stderr = stderr_str(&output);
     assert!(
@@ -701,8 +732,13 @@ fn timeline_puts_events_on_stdout_and_summary_and_cli_warnings_on_stderr() {
             .any(|l| l.starts_with("warning:") && l.contains("notes.txt")),
         "expected warning for skipped CLI file on stderr:\n{stderr}"
     );
+    let expected_summary = if expected == 1 {
+        "1 event from 1 file".to_owned()
+    } else {
+        format!("{expected} events from 1 file")
+    };
     assert!(
-        stderr.contains("1 event from 1 file"),
+        stderr.contains(&expected_summary),
         "expected summary on stderr:\n{stderr}"
     );
     assert!(
@@ -714,9 +750,10 @@ fn timeline_puts_events_on_stdout_and_summary_and_cli_warnings_on_stderr() {
 #[test]
 fn timeline_quiet_hides_summary_on_stderr() {
     let sample = fixture("format/Security_short_selected.evtx");
+    let expected = baseline_event_count(&sample);
     let output = run_cli_paths(["timeline".as_ref(), "--quiet".as_ref(), sample.as_os_str()]);
     assert_eq!(output.status.code(), Some(0));
-    assert_eq!(parse_jsonl(&output.stdout).len(), 1);
+    assert_eq!(parse_jsonl(&output.stdout).len(), expected);
     assert!(
         output.stderr.is_empty(),
         "expected empty stderr with --quiet, got: {}",
@@ -931,7 +968,9 @@ fn filename_with_spaces_and_non_ascii_is_read() {
     let dir = tempfile::tempdir().unwrap();
     let name = "registro de auditoría.evtx";
     let target = dir.path().join(name);
-    fs::copy(fixture("format/Security_short_selected.evtx"), &target).unwrap();
+    let sample = fixture("format/Security_short_selected.evtx");
+    let expected = baseline_event_count(&sample);
+    fs::copy(&sample, &target).unwrap();
 
     let output = run_cli_paths(["timeline".as_ref(), target.as_os_str()]);
     assert_eq!(
@@ -941,12 +980,14 @@ fn filename_with_spaces_and_non_ascii_is_read() {
         stderr_str(&output)
     );
     let events = parse_jsonl(&output.stdout);
-    assert_eq!(events.len(), 1);
-    let file_field = events[0]["file"].as_str().expect("file field is string");
-    assert!(
-        file_field.ends_with(name),
-        "expected file field to end with {name:?}, got {file_field:?}"
-    );
+    assert_eq!(events.len(), expected);
+    for event in &events {
+        let file_field = event["file"].as_str().expect("file field is string");
+        assert!(
+            file_field.ends_with(name),
+            "expected file field to end with {name:?}, got {file_field:?}"
+        );
+    }
 }
 
 #[test]
@@ -955,12 +996,13 @@ fn duplicate_file_argument_emits_events_twice() {
     let output = run_cli_paths(["timeline".as_ref(), clean.as_os_str(), clean.as_os_str()]);
     assert_eq!(output.status.code(), Some(0));
     let events = parse_jsonl(&output.stdout);
-    assert_eq!(events.len(), 2, "expected each event twice without dedup");
+    assert_eq!(events.len(), 4, "expected each event twice without dedup");
     assert_eq!(events[0], events[1]);
+    assert_eq!(events[2], events[3]);
     let stderr = stderr_str(&output);
     assert!(
-        stderr.contains("2 events from 2 files"),
-        "expected '2 events from 2 files' in stderr:\n{stderr}"
+        stderr.contains("4 events from 2 files"),
+        "expected '4 events from 2 files' in stderr:\n{stderr}"
     );
 }
 
@@ -977,7 +1019,8 @@ fn directory_with_and_without_trailing_separator_gives_same_events() {
 
     let events_without = parse_jsonl(&without_out.stdout);
     let events_with = parse_jsonl(&with_out.stdout);
-    assert_eq!(events_without.len(), 52);
+    assert!(!events_without.is_empty());
+    assert_eq!(events_without.len(), golden_windows_count());
     assert_eq!(
         events_without, events_with,
         "trailing separator changed emitted events"
@@ -991,7 +1034,9 @@ fn symlink_to_file_given_directly_is_followed() {
 
     let dir = tempfile::tempdir().unwrap();
     let link = dir.path().join("linked.evtx");
-    symlink(fixture("format/Security_short_selected.evtx"), &link).unwrap();
+    let sample = fixture("format/Security_short_selected.evtx");
+    let expected = baseline_event_count(&sample);
+    symlink(&sample, &link).unwrap();
 
     let output = run_cli_paths(["timeline".as_ref(), link.as_os_str()]);
     assert_eq!(
@@ -1000,7 +1045,7 @@ fn symlink_to_file_given_directly_is_followed() {
         "stderr: {}",
         stderr_str(&output)
     );
-    assert_eq!(parse_jsonl(&output.stdout).len(), 1);
+    assert_eq!(parse_jsonl(&output.stdout).len(), expected);
 }
 
 #[cfg(unix)]
@@ -1011,11 +1056,9 @@ fn symlink_loop_inside_directory_does_not_hang() {
     let dir = tempfile::tempdir().unwrap();
     let sub = dir.path().join("sub");
     fs::create_dir(&sub).unwrap();
-    fs::copy(
-        fixture("format/Security_short_selected.evtx"),
-        sub.join("real.evtx"),
-    )
-    .unwrap();
+    let sample = fixture("format/Security_short_selected.evtx");
+    let expected = baseline_event_count(&sample);
+    fs::copy(&sample, sub.join("real.evtx")).unwrap();
     symlink(dir.path(), sub.join("loop")).unwrap();
 
     let output = run_cli_paths(["timeline".as_ref(), dir.path().as_os_str()]);
@@ -1025,5 +1068,5 @@ fn symlink_loop_inside_directory_does_not_hang() {
         "stderr: {}",
         stderr_str(&output)
     );
-    assert_eq!(parse_jsonl(&output.stdout).len(), 1);
+    assert_eq!(parse_jsonl(&output.stdout).len(), expected);
 }

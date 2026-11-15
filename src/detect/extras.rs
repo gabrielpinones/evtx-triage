@@ -56,9 +56,10 @@ impl Rule for LogCleared {
             if event.kind != EventKind::LogClear {
                 continue;
             }
-            let reason = match non_empty(event.user.as_deref()) {
-                Some(user) => format!("Security audit log cleared by {user}"),
-                None => "Security audit log cleared by an unknown user".to_owned(),
+            let user = non_empty(event.user.as_deref()).unwrap_or("an unknown user");
+            let reason = match non_empty(event.target.as_deref()) {
+                Some(target) => format!("Event log {target} cleared by {user}"),
+                None => format!("Security audit log cleared by {user}"),
             };
             event.flags.push(Flag {
                 rule: self.id(),
@@ -553,15 +554,35 @@ mod tests {
             EventKind::LogClear,
             "Security.evtx",
         );
-        let other = TimelineEvent::new(
+
+        let mut targeted = TimelineEvent::new(
             ts(102),
+            "DC01",
+            SourceKind::Evtx,
+            EventKind::LogClear,
+            "System.evtx",
+        );
+        targeted.user = Some(r"CORP\admin".into());
+        targeted.target = Some("System".into());
+
+        let mut targeted_unknown = TimelineEvent::new(
+            ts(103),
+            "DC01",
+            SourceKind::Evtx,
+            EventKind::LogClear,
+            "System.evtx",
+        );
+        targeted_unknown.target = Some("System".into());
+
+        let other = TimelineEvent::new(
+            ts(104),
             "DC01",
             SourceKind::Evtx,
             EventKind::LogonSuccess,
             "Security.evtx",
         );
 
-        let mut events = vec![known, unknown, other];
+        let mut events = vec![known, unknown, targeted, targeted_unknown, other];
         LogCleared.apply(&mut events);
 
         assert_eq!(events[0].flags.len(), 1);
@@ -571,11 +592,24 @@ mod tests {
             r"Security audit log cleared by CORP\admin"
         );
         assert_eq!(events[1].flags.len(), 1);
+        assert_eq!(events[1].flags[0].severity, Severity::High);
         assert_eq!(
             events[1].flags[0].reason,
             "Security audit log cleared by an unknown user"
         );
-        assert!(events[2].flags.is_empty());
+        assert_eq!(events[2].flags.len(), 1);
+        assert_eq!(events[2].flags[0].severity, Severity::High);
+        assert_eq!(
+            events[2].flags[0].reason,
+            r"Event log System cleared by CORP\admin"
+        );
+        assert_eq!(events[3].flags.len(), 1);
+        assert_eq!(events[3].flags[0].severity, Severity::High);
+        assert_eq!(
+            events[3].flags[0].reason,
+            "Event log System cleared by an unknown user"
+        );
+        assert!(events[4].flags.is_empty());
     }
 
     #[test]

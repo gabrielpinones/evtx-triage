@@ -5,9 +5,9 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 use crate::model::TimelineEvent;
+use crate::source::evtx::dispatch;
 use crate::source::evtx::fields::{RecordMeta, scalar_str};
 use crate::source::evtx::powershell::ScriptBlockCollector;
-use crate::source::evtx::{account, logon, process, service, task};
 use crate::source::{ReadOptions, SourceStats};
 
 pub(crate) fn read_file(
@@ -45,7 +45,7 @@ pub(crate) fn read_file(
             continue;
         };
 
-        if !is_supported(provider, event_id) {
+        if !dispatch::is_supported(provider, event_id) {
             continue;
         }
 
@@ -86,70 +86,16 @@ pub(crate) fn read_file(
         };
 
         let event_data = event_obj.get("EventData").unwrap_or(&Value::Null);
-        match (provider, event_id) {
-            ("Microsoft-Windows-Security-Auditing", 4624) => {
-                out.push(logon::extract_4624(&meta, event_data));
-                stats.events_emitted = stats.events_emitted.saturating_add(1);
-            }
-            ("Microsoft-Windows-Security-Auditing", 4625) => {
-                out.push(logon::extract_4625(&meta, event_data));
-                stats.events_emitted = stats.events_emitted.saturating_add(1);
-            }
-            ("Microsoft-Windows-Security-Auditing", 4648) => {
-                out.push(logon::extract_4648(&meta, event_data));
-                stats.events_emitted = stats.events_emitted.saturating_add(1);
-            }
-            ("Microsoft-Windows-Security-Auditing", 4688) => {
-                out.push(process::extract_4688(&meta, event_data));
-                stats.events_emitted = stats.events_emitted.saturating_add(1);
-            }
-            ("Microsoft-Windows-Security-Auditing", 4698) => {
-                out.push(task::extract_4698(&meta, event_data));
-                stats.events_emitted = stats.events_emitted.saturating_add(1);
-            }
-            ("Microsoft-Windows-Security-Auditing", 4720) => {
-                out.push(account::extract_4720(&meta, event_data));
-                stats.events_emitted = stats.events_emitted.saturating_add(1);
-            }
-            ("Microsoft-Windows-Eventlog", 1102) => {
-                let log_cleared = event_obj
-                    .get("UserData")
-                    .and_then(|ud| ud.get("LogFileCleared"))
-                    .unwrap_or(&Value::Null);
-                out.push(account::extract_1102(&meta, log_cleared));
-                stats.events_emitted = stats.events_emitted.saturating_add(1);
-            }
-            ("Service Control Manager", 7045) => {
-                out.push(service::extract_7045(&meta, event_data));
-                stats.events_emitted = stats.events_emitted.saturating_add(1);
-            }
-            ("Microsoft-Windows-Sysmon", 1) => {
-                out.push(process::extract_sysmon_1(&meta, event_data));
-                stats.events_emitted = stats.events_emitted.saturating_add(1);
-            }
-            ("Microsoft-Windows-PowerShell", 4104) => {
-                ps_collector.push(&meta, event_data);
-            }
-            _ => {}
-        }
+        let user_data = event_obj.get("UserData").unwrap_or(&Value::Null);
+        let before = out.len();
+        dispatch::dispatch(&meta, event_data, user_data, &mut ps_collector, out);
+        let added = out.len().saturating_sub(before) as u64;
+        stats.events_emitted = stats.events_emitted.saturating_add(added);
     }
 
     let ps_emitted = ps_collector.finish(out);
     stats.events_emitted = stats.events_emitted.saturating_add(ps_emitted);
     Ok(stats)
-}
-
-fn is_supported(provider: &str, event_id: u32) -> bool {
-    matches!(
-        (provider, event_id),
-        (
-            "Microsoft-Windows-Security-Auditing",
-            4624 | 4625 | 4648 | 4688 | 4698 | 4720
-        ) | ("Microsoft-Windows-Eventlog", 1102)
-            | ("Service Control Manager", 7045)
-            | ("Microsoft-Windows-Sysmon", 1)
-            | ("Microsoft-Windows-PowerShell", 4104)
-    )
 }
 
 fn extract_provider(system: &Value) -> Option<&str> {
@@ -230,10 +176,13 @@ mod tests {
         assert_eq!(stats.errors, 0);
         assert_eq!(count_kind(&events, EventKind::LogClear), 1);
         assert_eq!(count_kind(&events, EventKind::LogonSuccess), 6);
+        assert_eq!(count_kind(&events, EventKind::SpecialPrivileges), 5);
+        assert_eq!(count_kind(&events, EventKind::NtlmAuth), 4);
         assert_eq!(count_kind(&events, EventKind::TaskCreate), 1);
+        assert_eq!(count_kind(&events, EventKind::TaskDelete), 1);
         assert_eq!(count_kind(&events, EventKind::ProcessCreate), 4);
-        assert_eq!(events.len(), 12);
-        assert_eq!(stats.events_emitted, 12);
+        assert_eq!(events.len(), 22);
+        assert_eq!(stats.events_emitted, 22);
     }
 
     #[test]
@@ -284,7 +233,8 @@ mod tests {
         assert_eq!(count_kind(&events, EventKind::ProcessCreate), 17);
         assert_eq!(count_kind(&events, EventKind::ExplicitLogon), 3);
         assert_eq!(count_kind(&events, EventKind::LogonSuccess), 5);
-        assert_eq!(events.len(), 26);
+        assert_eq!(count_kind(&events, EventKind::SpecialPrivileges), 3);
+        assert_eq!(events.len(), 29);
     }
 
     #[test]

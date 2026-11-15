@@ -36,28 +36,47 @@ fn rules(events: &[Value]) -> Vec<&str> {
         .collect()
 }
 
+fn golden_windows_events() -> Vec<Value> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden/windows.jsonl");
+    let bytes = std::fs::read(&path).expect("golden windows.jsonl exists");
+    parse_jsonl(&bytes)
+}
+
+fn rule_count(events: &[Value], rule: &str) -> usize {
+    rules(events).into_iter().filter(|r| *r == rule).count()
+}
+
 #[test]
 fn windows_samples_give_a_sorted_timeline_with_all_ten_event_types() {
     let samples = fixtures("attack-samples");
     let output = timeline(&[samples.to_str().unwrap()]);
     assert_eq!(output.status.code(), Some(0), "{output:?}");
 
+    let golden = golden_windows_events();
+    let expected_total = golden.len();
     let events = parse_jsonl(&output.stdout);
-    assert_eq!(events.len(), 52);
+    assert_eq!(events.len(), expected_total);
 
     let times: Vec<&str> = events.iter().map(|e| e["ts"].as_str().unwrap()).collect();
     assert!(times.is_sorted(), "timeline is ordered by time");
     assert!(times[0] > "2019-01-01", "no event is left in 1601");
 
     // Sysmon 1 and Security 4688 are both process creations; the other eight
-    // ids map to one kind each.
+    // baseline ids map to one kind each, plus any newly added event types in golden.
     let ids: BTreeSet<u64> = events
         .iter()
         .map(|e| e["event_id"].as_u64().unwrap())
         .collect();
-    assert_eq!(
-        ids,
-        BTreeSet::from([1, 1102, 4104, 4624, 4625, 4648, 4688, 4698, 4720, 7045])
+    let expected_ids: BTreeSet<u64> = golden
+        .iter()
+        .map(|e| e["event_id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(ids, expected_ids);
+    assert!(
+        ids.is_superset(&BTreeSet::from([
+            1, 1102, 4104, 4624, 4625, 4648, 4688, 4698, 4720, 7045,
+        ])),
+        "baseline event IDs missing: {ids:?}"
     );
     for event in &events {
         assert_eq!(event["source"], "evtx");
@@ -65,20 +84,20 @@ fn windows_samples_give_a_sorted_timeline_with_all_ten_event_types() {
         assert!(!event["host"].as_str().unwrap().is_empty());
     }
 
-    let rules = rules(&events);
-    assert_eq!(rules.iter().filter(|r| **r == "log_cleared").count(), 2);
-    assert!(rules.iter().filter(|r| **r == "encoded_powershell").count() >= 4);
     assert_eq!(
-        rules
-            .iter()
-            .filter(|r| **r == "service_suspicious_path")
-            .count(),
-        3
+        rule_count(&events, "log_cleared"),
+        rule_count(&golden, "log_cleared")
+    );
+    assert!(rule_count(&events, "encoded_powershell") >= 4);
+    assert_eq!(
+        rule_count(&events, "service_suspicious_path"),
+        rule_count(&golden, "service_suspicious_path")
     );
 
     let summary = String::from_utf8_lossy(&output.stderr);
+    let expected_summary_count = format!("{expected_total} events");
     assert!(
-        summary.contains("52 events"),
+        summary.contains(&expected_summary_count),
         "summary goes to stderr: {summary}"
     );
 }
@@ -94,16 +113,27 @@ fn csv_has_one_row_per_event() {
     assert_eq!(&headers[0], "ts");
     assert!(headers.iter().any(|h| h == "flags"));
     let rows: Vec<csv::StringRecord> = reader.records().map(Result::unwrap).collect();
-    assert_eq!(rows.len(), 52);
+    assert_eq!(rows.len(), golden_windows_events().len());
     assert!(rows.iter().all(|row| row.len() == headers.len()));
 }
 
 #[test]
 fn event_id_filter_and_flagged_only() {
+    let golden = golden_windows_events();
+    let expected_service_or_task = golden
+        .iter()
+        .filter(|e| matches!(e["event_id"].as_u64(), Some(7045 | 4698)))
+        .count();
+    let expected_flagged = golden
+        .iter()
+        .filter(|e| e["flags"].as_array().is_some_and(|flags| !flags.is_empty()))
+        .count();
+
     let samples = fixtures("attack-samples");
     let output = timeline(&[samples.to_str().unwrap(), "--event-id", "7045,4698"]);
     let events = parse_jsonl(&output.stdout);
-    assert_eq!(events.len(), 4);
+    assert!(!events.is_empty());
+    assert_eq!(events.len(), expected_service_or_task);
     assert!(
         events
             .iter()
@@ -112,7 +142,8 @@ fn event_id_filter_and_flagged_only() {
 
     let output = timeline(&[samples.to_str().unwrap(), "--flagged-only"]);
     let events = parse_jsonl(&output.stdout);
-    assert_eq!(events.len(), 9);
+    assert!(!events.is_empty());
+    assert_eq!(events.len(), expected_flagged);
     assert!(
         events
             .iter()
@@ -178,7 +209,10 @@ fn output_file_receives_the_timeline_and_stdout_stays_empty() {
     let output = timeline(&[samples.to_str().unwrap(), "-o", target.to_str().unwrap()]);
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stdout.is_empty());
-    assert_eq!(parse_jsonl(&std::fs::read(&target).unwrap()).len(), 52);
+    assert_eq!(
+        parse_jsonl(&std::fs::read(&target).unwrap()).len(),
+        golden_windows_events().len()
+    );
 }
 
 #[test]
@@ -231,7 +265,10 @@ fn quiet_prints_no_summary() {
     let output = timeline(&[samples.to_str().unwrap(), "--quiet"]);
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stderr.is_empty());
-    assert_eq!(parse_jsonl(&output.stdout).len(), 52);
+    assert_eq!(
+        parse_jsonl(&output.stdout).len(),
+        golden_windows_events().len()
+    );
 }
 
 #[cfg(unix)]
