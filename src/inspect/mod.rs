@@ -858,6 +858,25 @@ mod tests {
     }
 
     #[test]
+    fn as_json_omits_records_unless_requested() {
+        let path = fixture_path("tests/fixtures/format/Security_short_selected.evtx");
+        let report = inspect_file(&path).unwrap();
+
+        let without = serde_json::to_value(report.as_json(false)).unwrap();
+        assert!(without.get("records").is_none());
+        assert_eq!(without["summary"]["total_records"], 7);
+        assert!(without["file_header"].is_object());
+        assert!(without["chunks"].is_array());
+        assert!(without["findings"].is_array());
+
+        let with = serde_json::to_value(report.as_json(true)).unwrap();
+        assert_eq!(with["records"].as_array().unwrap().len(), 7);
+
+        let full = serde_json::to_value(&report).unwrap();
+        assert_eq!(with, full);
+    }
+
+    #[test]
     fn record_ids_and_timestamps_match_evtx_crate_across_clean_fixtures() {
         for rel in [
             "tests/fixtures/format/Security_short_selected.evtx",

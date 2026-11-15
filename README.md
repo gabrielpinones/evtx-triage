@@ -6,7 +6,7 @@ A Rust CLI that reads Windows event logs (`.evtx`) offline and produces a timeli
 
 ## Install
 
-Every `v*` tag publishes binaries for Linux (glibc and musl) and Windows on the Releases page, with a `SHA256SUMS` file.
+Every version tag (`x.y.z`) publishes binaries for Linux (glibc and musl) and Windows on the Releases page, with a `SHA256SUMS` file.
 
 From source, with stable Rust:
 
@@ -39,7 +39,7 @@ When it finishes, a summary on stderr says how many events came out, which rules
 
 Exit status: 0 if everything was read, 1 if nothing could be produced, 2 if there is output but part of the input was damaged. For `inspect`, 2 means the file shows damage or signs of tampering.
 
-All times are UTC. Colors follow `NO_COLOR`.
+All times are UTC. Colors follow `NO_COLOR` and `CLICOLOR_FORCE`.
 
 ## Events
 
@@ -70,8 +70,8 @@ These are simple heuristics and they give false positives. They help decide wher
 | `encoded_powershell` | high | A command line carries `-EncodedCommand` or any of its abbreviations and the argument decodes to text. The flag includes the decoded command. |
 | `encoded_powershell` | medium | A script or command calls `FromBase64String`. |
 | `log_cleared` | high | Someone cleared the audit log (1102). |
-| `service_suspicious_path` | medium | A new service runs from `Temp`, `ADMIN$`, a UNC path, or through `cmd /c`, PowerShell, `rundll32` and the like. |
-| `failed_logon_burst` | medium | Five failed logons from the same origin inside the window. |
+| `service_suspicious_path` | medium | A new service runs from `Temp`, `ADMIN$` or a UNC path, runs a command interpreter (`cmd`, PowerShell) or `rundll32` and the like, or has an image path with no directory. |
+| `failed_logon_burst` | medium | Five failed logons on one host from the same origin inside the window. |
 | `logon_after_failed_burst` | high | A successful logon from that same origin after the burst. |
 | `exec_from_tmp` | medium | On Linux, something runs from `/tmp`, `/var/tmp` or `/dev/shm`. |
 
@@ -79,13 +79,13 @@ These are simple heuristics and they give false positives. They help decide wher
 
 ## Output formats
 
-JSONL is the lossless format: one object per event with `ts`, `host`, `source`, `channel`, `provider`, `event_id`, `record_id`, `kind`, `summary`, the common fields that apply (`user`, `src_ip`, `logon_type`, `logon_id`, `process`, `pid`, `parent_process`, `ppid`, `command_line`, `target`), a `details` map with whatever is specific to that event, and the `flags` list.
+JSONL is the lossless format: one object per event with `ts`, `host`, `source`, `channel`, `provider`, `event_id`, `record_id`, `kind`, `summary`, the common fields that apply (`user`, `src_ip`, `logon_type`, `logon_id`, `process`, `pid`, `parent_process`, `ppid`, `command_line`, `target`), a `details` map with whatever is specific to that event, the `flags` list, and `file`, the path of the log the event came from.
 
 ```
 evtx-triage timeline ./logs | jq -r 'select(.flags | length > 0) | [.ts, .host, .summary] | @tsv'
 ```
 
-CSV has the same columns, with `details` as JSON in one cell. The content of a log is written by whoever generated the events, the attacker included, and a CSV ends up open in a spreadsheet. So text cells that start with `=`, `+`, `-` or `@` get a leading apostrophe, which keeps them from running as a formula. For the same reason the table replaces control characters before printing: an escape sequence inside a command line never reaches the terminal.
+CSV has one column per field, with `details` as JSON in one cell and the flags in two columns: `flags` (the rule ids) and `flag_reasons`. The content of a log is written by whoever generated the events, the attacker included, and a CSV ends up open in a spreadsheet. So text cells that start with `=`, `+`, `-`, `@`, a tab or a carriage return get a leading apostrophe, which keeps them from running as a formula. For the same reason the table replaces control characters before printing: an escape sequence inside a command line never reaches the terminal.
 
 ## inspect
 
@@ -101,7 +101,7 @@ Findings (14):
   warning record_id_gap (chunk 0): between chunk 9 (last id 45949) and chunk 0 (first id 46728): missing record ids 45950..=46727
 ```
 
-It reports: the dirty flag, a CRC32 mismatch in the file header, a chunk header or the chunk data, an invalid chunk magic, a badly framed record, gaps in the record ids (records may have been removed), header counters that disagree with what was walked, and a truncated file. `--records` lists every record with its offset and `--json` gives the whole report as JSON.
+It reports: the dirty flag, a CRC32 mismatch in the file header, a chunk header or the chunk data, an invalid chunk magic, a badly framed record, gaps in the record ids (records may have been removed), header counters that disagree with what was walked, and a truncated file. `--json` gives the report as JSON. `--records` adds every record with its offset, in both forms.
 
 ## What is inside an .evtx file
 

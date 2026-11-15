@@ -84,7 +84,30 @@ pub struct InspectReport {
     pub summary: InspectSummary,
 }
 
+#[derive(Serialize)]
+struct InspectReportJson<'a> {
+    file_size: u64,
+    file_header: Option<&'a FileHeader>,
+    chunks: &'a [ChunkReport],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    records: Option<&'a [RecordSummary]>,
+    findings: &'a [Finding],
+    summary: &'a InspectSummary,
+}
+
 impl InspectReport {
+    /// Borrowed JSON view of the report, omitting `records` unless requested.
+    pub fn as_json(&self, include_records: bool) -> impl Serialize + '_ {
+        InspectReportJson {
+            file_size: self.file_size,
+            file_header: self.file_header.as_ref(),
+            chunks: &self.chunks,
+            records: include_records.then_some(self.records.as_slice()),
+            findings: &self.findings,
+            summary: &self.summary,
+        }
+    }
+
     /// True when the file shows damage or signs of tampering: dirty flag,
     /// checksum mismatch, bad chunk magic, record id gaps, inconsistent sizes.
     pub fn has_findings(&self) -> bool {

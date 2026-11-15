@@ -68,6 +68,13 @@ fn windows_samples_give_a_sorted_timeline_with_all_ten_event_types() {
     let rules = rules(&events);
     assert_eq!(rules.iter().filter(|r| **r == "log_cleared").count(), 2);
     assert!(rules.iter().filter(|r| **r == "encoded_powershell").count() >= 4);
+    assert_eq!(
+        rules
+            .iter()
+            .filter(|r| **r == "service_suspicious_path")
+            .count(),
+        3
+    );
 
     let summary = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -105,7 +112,7 @@ fn event_id_filter_and_flagged_only() {
 
     let output = timeline(&[samples.to_str().unwrap(), "--flagged-only"]);
     let events = parse_jsonl(&output.stdout);
-    assert!(!events.is_empty());
+    assert_eq!(events.len(), 9);
     assert!(
         events
             .iter()

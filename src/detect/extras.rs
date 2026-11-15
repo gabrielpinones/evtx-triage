@@ -26,6 +26,15 @@ const SUSPICIOUS_SERVICE_PATTERNS: &[&str] = &[
     r"\\.\pipe\",
 ];
 
+const SERVICE_INTERPRETERS: &[&str] = &[
+    "cmd",
+    "cmd.exe",
+    "powershell",
+    "powershell.exe",
+    "pwsh",
+    "pwsh.exe",
+];
+
 const TMP_PREFIXES: &[&str] = &["/tmp/", "/var/tmp/", "/dev/shm/"];
 
 /// Programs that run the script given as their first non-option argument.
@@ -62,7 +71,7 @@ impl Rule for LogCleared {
 }
 
 /// Flags `ServiceInstall` events whose image path points to a suspicious
-/// directory, interpreter, named pipe or UNC share.
+/// directory, interpreter, named pipe, UNC share, or has no directory.
 pub struct ServiceSuspiciousPath;
 
 impl Rule for ServiceSuspiciousPath {
@@ -78,26 +87,63 @@ impl Rule for ServiceSuspiciousPath {
             let Some(cmd) = non_empty(event.command_line.as_deref()) else {
                 continue;
             };
-            let lower = cmd.to_lowercase();
-            let matched = SUSPICIOUS_SERVICE_PATTERNS
-                .iter()
-                .copied()
-                .find(|pat| lower.contains(pat))
-                .or_else(|| is_unc_path(&lower).then_some("UNC path"));
-
-            let Some(pattern) = matched else {
+            let svc_name = non_empty(event.target.as_deref()).unwrap_or("unknown");
+            let Some(reason) = service_suspicious_reason(cmd, svc_name) else {
                 continue;
             };
-            let svc_name = non_empty(event.target.as_deref()).unwrap_or("unknown");
             event.flags.push(Flag {
                 rule: self.id(),
                 severity: Severity::Medium,
-                reason: format!(
-                    "Service \"{svc_name}\" runs from a suspicious location or interpreter: {pattern}"
-                ),
+                reason,
                 related: Vec::new(),
             });
         }
+    }
+}
+
+fn service_suspicious_reason(cmd: &str, svc_name: &str) -> Option<String> {
+    let lower = cmd.to_lowercase();
+    if let Some(pattern) = SUSPICIOUS_SERVICE_PATTERNS
+        .iter()
+        .copied()
+        .find(|pat| lower.contains(pat))
+        .or_else(|| is_unc_path(&lower).then_some("UNC path"))
+    {
+        return Some(format!(
+            "Service \"{svc_name}\" runs from a suspicious location or interpreter: {pattern}"
+        ));
+    }
+
+    let exe = first_token(cmd);
+    if exe.is_empty() {
+        return None;
+    }
+    let file_name = exe.rsplit(['\\', '/']).next().unwrap_or(exe);
+    if let Some(interp) = SERVICE_INTERPRETERS
+        .iter()
+        .copied()
+        .find(|name| file_name.eq_ignore_ascii_case(name))
+    {
+        return Some(format!(
+            "Service \"{svc_name}\" runs a command interpreter: {interp}"
+        ));
+    }
+    if !exe.contains(['\\', '/', '%']) {
+        return Some(format!(
+            "Service \"{svc_name}\" image path has no directory: {exe}"
+        ));
+    }
+    None
+}
+
+fn first_token(cmd: &str) -> &str {
+    let trimmed = cmd.trim_start();
+    if let Some(after_quote) = trimmed.strip_prefix('"') {
+        after_quote
+            .split_once('"')
+            .map_or(after_quote, |(tok, _)| tok)
+    } else {
+        trimmed.split_whitespace().next().unwrap_or("")
     }
 }
 
@@ -581,6 +627,122 @@ mod tests {
                 None => assert!(
                     events[idx].flags.is_empty(),
                     "case {idx} should not flag: {:?}",
+                    events[idx].flags
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn service_suspicious_path_flags_interpreters_and_bare_paths() {
+        let cases = [
+            (
+                "svc_ok",
+                r"C:\Windows\System32\svchost.exe -k netsvcs",
+                None,
+            ),
+            ("drv_ok", r"system32\drivers\foo.sys", None),
+            ("quoted_ok", r#""C:\Program Files\App\svc.exe" --run"#, None),
+            ("sysroot_ok", r"\SystemRoot\system32\drivers\foo.sys", None),
+            (
+                "env_ok",
+                r"%SystemRoot%\system32\svchost.exe -k LocalService",
+                None,
+            ),
+            ("prefix_ok", r"C:\Program Files\App\cmd_helper.exe", None),
+            ("empty_quotes", r#""""#, None),
+            (
+                "upper_cmd",
+                "CMD.EXE",
+                Some(r#"Service "upper_cmd" runs a command interpreter: cmd.exe"#),
+            ),
+            (
+                "quoted_cmd_k",
+                r#""cmd.exe" /k x"#,
+                Some(r#"Service "quoted_cmd_k" runs a command interpreter: cmd.exe"#),
+            ),
+            (
+                "full_cmd",
+                r"C:\Windows\System32\cmd.exe",
+                Some(r#"Service "full_cmd" runs a command interpreter: cmd.exe"#),
+            ),
+            (
+                "slash_cmd_bare",
+                "C:/Windows/System32/cmd",
+                Some(r#"Service "slash_cmd_bare" runs a command interpreter: cmd"#),
+            ),
+            (
+                "quoted_full_cmd_c",
+                r#""C:\Tools\cmd.exe" /c whoami"#,
+                Some(r#"Service "quoted_full_cmd_c" runs a command interpreter: cmd.exe"#),
+            ),
+            (
+                "remotesvc",
+                "calc.exe",
+                Some(r#"Service "remotesvc" image path has no directory: calc.exe"#),
+            ),
+            (
+                "quoted_bare",
+                r#""my service.exe" --run"#,
+                Some(r#"Service "quoted_bare" image path has no directory: my service.exe"#),
+            ),
+            (
+                "existing_cmd_c",
+                r"C:\Windows\System32\cmd.exe /c whoami",
+                Some(
+                    r#"Service "existing_cmd_c" runs from a suspicious location or interpreter: cmd.exe /c"#,
+                ),
+            ),
+            (
+                "existing_pwsh",
+                r"C:\Tools\pwsh.exe -File svc.ps1",
+                Some(
+                    r#"Service "existing_pwsh" runs from a suspicious location or interpreter: pwsh"#,
+                ),
+            ),
+            (
+                "existing_temp_cmd",
+                r"C:\Windows\Temp\cmd.exe",
+                Some(
+                    r#"Service "existing_temp_cmd" runs from a suspicious location or interpreter: \temp\"#,
+                ),
+            ),
+        ];
+
+        let mut events: Vec<TimelineEvent> = cases
+            .iter()
+            .enumerate()
+            .map(|(idx, (name, cmd, _))| {
+                let mut ev = TimelineEvent::new(
+                    ts(200 + idx as i64),
+                    "WS01",
+                    SourceKind::Evtx,
+                    EventKind::ServiceInstall,
+                    "System.evtx",
+                );
+                ev.target = Some((*name).to_owned());
+                ev.command_line = Some((*cmd).to_owned());
+                ev
+            })
+            .collect();
+
+        ServiceSuspiciousPath.apply(&mut events);
+
+        for (idx, (name, cmd, expected)) in cases.iter().enumerate() {
+            match expected {
+                Some(reason) => {
+                    assert_eq!(
+                        events[idx].flags.len(),
+                        1,
+                        "case {name} ({cmd}) should produce exactly 1 flag, got {:?}",
+                        events[idx].flags
+                    );
+                    assert_eq!(events[idx].flags[0].severity, Severity::Medium);
+                    assert_eq!(events[idx].flags[0].reason, *reason);
+                }
+                None => assert!(
+                    events[idx].flags.is_empty(),
+                    "case {name} ({cmd}) should not flag: {:?}",
                     events[idx].flags
                 ),
             }

@@ -1,0 +1,367 @@
+{
+  "file_size": 1052672,
+  "file_header": {
+    "first_chunk_number": 3,
+    "last_chunk_number": 2,
+    "next_record_id": 4309,
+    "header_size": 128,
+    "minor_version": 1,
+    "major_version": 3,
+    "header_block_size": 4096,
+    "chunk_count": 16,
+    "flags": 1,
+    "is_dirty": true,
+    "is_full": false,
+    "no_crc32": false,
+    "stored_crc32": 2875016616,
+    "computed_crc32": 2875016616
+  },
+  "chunks": [
+    {
+      "index": 0,
+      "file_offset": 4096,
+      "byte_len": 65536,
+      "status": "valid",
+      "header": {
+        "first_event_record_number": 46728,
+        "last_event_record_number": 46857,
+        "first_event_record_id": 46728,
+        "last_event_record_id": 46857,
+        "header_size": 128,
+        "last_event_record_data_offset": 64624,
+        "free_space_offset": 65128,
+        "stored_data_crc32": 3738444864,
+        "flags": 1,
+        "no_crc32": false,
+        "stored_header_crc32": 4190490508,
+        "computed_header_crc32": 4190490508,
+        "computed_data_crc32": 690968039
+      },
+      "records_walked": 13,
+      "first_record_id_walked": 46728,
+      "last_record_id_walked": 46740,
+      "first_timestamp": "2018-08-08T03:46:41.457620Z",
+      "last_timestamp": "2018-08-08T03:47:41.424726Z"
+    },
+    {
+      "index": 1,
+      "file_offset": 69632,
+      "byte_len": 65536,
+      "status": "unused",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    },
+    {
+      "index": 2,
+      "file_offset": 135168,
+      "byte_len": 65536,
+      "status": "unused",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    },
+    {
+      "index": 3,
+      "file_offset": 200704,
+      "byte_len": 65536,
+      "status": "unused",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    },
+    {
+      "index": 4,
+      "file_offset": 266240,
+      "byte_len": 65536,
+      "status": "unused",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    },
+    {
+      "index": 5,
+      "file_offset": 331776,
+      "byte_len": 65536,
+      "status": "unused",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    },
+    {
+      "index": 6,
+      "file_offset": 397312,
+      "byte_len": 65536,
+      "status": "bad_magic",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    },
+    {
+      "index": 7,
+      "file_offset": 462848,
+      "byte_len": 65536,
+      "status": "valid",
+      "header": {
+        "first_event_record_number": 47628,
+        "last_event_record_number": 47705,
+        "first_event_record_id": 47628,
+        "last_event_record_id": 47705,
+        "header_size": 128,
+        "last_event_record_data_offset": 39936,
+        "free_space_offset": 40408,
+        "stored_data_crc32": 1136514711,
+        "flags": 1,
+        "no_crc32": false,
+        "stored_header_crc32": 325294474,
+        "computed_header_crc32": 325294474,
+        "computed_data_crc32": 2297054368
+      },
+      "records_walked": 12,
+      "first_record_id_walked": 47628,
+      "last_record_id_walked": 47639,
+      "first_timestamp": "2018-08-08T15:37:15.855851Z",
+      "last_timestamp": "2018-08-08T15:47:31.704077Z"
+    },
+    {
+      "index": 8,
+      "file_offset": 528384,
+      "byte_len": 65536,
+      "status": "valid",
+      "header": {
+        "first_event_record_number": 45691,
+        "last_event_record_number": 45819,
+        "first_event_record_id": 45691,
+        "last_event_record_id": 45819,
+        "header_size": 128,
+        "last_event_record_data_offset": 64776,
+        "free_space_offset": 65248,
+        "stored_data_crc32": 3339689734,
+        "flags": 1,
+        "no_crc32": false,
+        "stored_header_crc32": 1417811321,
+        "computed_header_crc32": 1417811321,
+        "computed_data_crc32": 3339689734
+      },
+      "records_walked": 129,
+      "first_record_id_walked": 45691,
+      "last_record_id_walked": 45819,
+      "first_timestamp": "2018-08-07T15:51:15.724872Z",
+      "last_timestamp": "2018-08-07T18:19:30.716211Z"
+    },
+    {
+      "index": 9,
+      "file_offset": 593920,
+      "byte_len": 65536,
+      "status": "valid",
+      "header": {
+        "first_event_record_number": 45820,
+        "last_event_record_number": 45949,
+        "first_event_record_id": 45820,
+        "last_event_record_id": 45949,
+        "header_size": 128,
+        "last_event_record_data_offset": 64768,
+        "free_space_offset": 65240,
+        "stored_data_crc32": 849489792,
+        "flags": 1,
+        "no_crc32": false,
+        "stored_header_crc32": 829459478,
+        "computed_header_crc32": 829459478,
+        "computed_data_crc32": 3794979777
+      },
+      "records_walked": 113,
+      "first_record_id_walked": 45820,
+      "last_record_id_walked": 45932,
+      "first_timestamp": "2018-08-07T18:19:30.727381Z",
+      "last_timestamp": "2018-08-07T18:57:09.010733Z"
+    },
+    {
+      "index": 10,
+      "file_offset": 659456,
+      "byte_len": 65536,
+      "status": "bad_magic",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    },
+    {
+      "index": 11,
+      "file_offset": 724992,
+      "byte_len": 65536,
+      "status": "unused",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    },
+    {
+      "index": 12,
+      "file_offset": 790528,
+      "byte_len": 65536,
+      "status": "unused",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    },
+    {
+      "index": 13,
+      "file_offset": 856064,
+      "byte_len": 65536,
+      "status": "unused",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    },
+    {
+      "index": 14,
+      "file_offset": 921600,
+      "byte_len": 65536,
+      "status": "unused",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    },
+    {
+      "index": 15,
+      "file_offset": 987136,
+      "byte_len": 65536,
+      "status": "unused",
+      "header": null,
+      "records_walked": 0,
+      "first_record_id_walked": null,
+      "last_record_id_walked": null,
+      "first_timestamp": null,
+      "last_timestamp": null
+    }
+  ],
+  "findings": [
+    {
+      "severity": "warning",
+      "kind": "dirty_flag",
+      "chunk_index": null,
+      "message": "file has the dirty flag set (not closed cleanly; header counters can be stale)"
+    },
+    {
+      "severity": "error",
+      "kind": "chunk_data_checksum_mismatch",
+      "chunk_index": 0,
+      "message": "chunk 0 data CRC32 mismatch: stored 0xded42440, computed 0x292f55e7"
+    },
+    {
+      "severity": "error",
+      "kind": "record_framing_error",
+      "chunk_index": 0,
+      "message": "chunk 0: record at chunk offset 8128 (file offset 0x2fc0) trailing size copy (0) differs from leading size (472); the rest of the chunk was not walked"
+    },
+    {
+      "severity": "warning",
+      "kind": "chunk_header_mismatch",
+      "chunk_index": 0,
+      "message": "chunk 0: header record count 130 != walked 13; header last record id 46857 != walked 46740"
+    },
+    {
+      "severity": "error",
+      "kind": "bad_chunk_magic",
+      "chunk_index": 6,
+      "message": "chunk 6 at offset 0x61000 has zeroed header magic 00 00 00 00 00 00 00 00 with non-zero payload"
+    },
+    {
+      "severity": "error",
+      "kind": "chunk_data_checksum_mismatch",
+      "chunk_index": 7,
+      "message": "chunk 7 data CRC32 mismatch: stored 0x43bdd697, computed 0x88ea44a0"
+    },
+    {
+      "severity": "error",
+      "kind": "record_framing_error",
+      "chunk_index": 7,
+      "message": "chunk 7: record at chunk offset 7784 (file offset 0x72e68) trailing size copy (0) differs from leading size (504); the rest of the chunk was not walked"
+    },
+    {
+      "severity": "warning",
+      "kind": "chunk_header_mismatch",
+      "chunk_index": 7,
+      "message": "chunk 7: header record count 78 != walked 12; header last record id 47705 != walked 47639"
+    },
+    {
+      "severity": "error",
+      "kind": "chunk_data_checksum_mismatch",
+      "chunk_index": 9,
+      "message": "chunk 9 data CRC32 mismatch: stored 0x32a22f80, computed 0xe232cbc1"
+    },
+    {
+      "severity": "error",
+      "kind": "record_framing_error",
+      "chunk_index": 9,
+      "message": "chunk 9: record at chunk offset 56896 (file offset 0x9ee40) trailing size copy (0) differs from leading size (504); the rest of the chunk was not walked"
+    },
+    {
+      "severity": "warning",
+      "kind": "chunk_header_mismatch",
+      "chunk_index": 9,
+      "message": "chunk 9: header record count 130 != walked 113; header last record id 45949 != walked 45932"
+    },
+    {
+      "severity": "error",
+      "kind": "bad_chunk_magic",
+      "chunk_index": 10,
+      "message": "chunk 10 at offset 0xa1000 has zeroed header magic 00 00 00 00 00 00 00 00 with non-zero payload"
+    },
+    {
+      "severity": "warning",
+      "kind": "record_id_gap",
+      "chunk_index": 0,
+      "message": "between chunk 9 (last id 45949) and chunk 0 (first id 46728): missing record ids 45950..=46727"
+    },
+    {
+      "severity": "warning",
+      "kind": "record_id_gap",
+      "chunk_index": 7,
+      "message": "between chunk 0 (last id 46857) and chunk 7 (first id 47628): missing record ids 46858..=47627"
+    }
+  ],
+  "summary": {
+    "total_chunks": 16,
+    "valid_chunks": 4,
+    "unused_chunks": 10,
+    "bad_chunks": 2,
+    "total_records": 267,
+    "first_timestamp": "2018-08-07T15:51:15.724872Z",
+    "last_timestamp": "2018-08-08T15:47:31.704077Z",
+    "info_count": 0,
+    "warning_count": 6,
+    "error_count": 8
+  }
+}

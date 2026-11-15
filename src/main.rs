@@ -108,7 +108,7 @@ fn run_inspect(args: InspectArgs) -> anyhow::Result<u8> {
         .with_context(|| format!("cannot inspect {}", args.file.display()))?;
     let mut out = BufWriter::new(anstream::stdout().lock());
     if args.json {
-        serde_json::to_writer_pretty(&mut out, &report)?;
+        serde_json::to_writer_pretty(&mut out, &report.as_json(args.records))?;
         writeln!(out)?;
     } else {
         write!(out, "{}", report.render_text(args.records))?;

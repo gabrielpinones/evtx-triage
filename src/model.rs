@@ -86,7 +86,9 @@ impl Severity {
 pub struct EventRef {
     #[serde(serialize_with = "serialize_ts")]
     pub ts: Timestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub channel: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub record_id: Option<u64>,
 }
 
@@ -273,5 +275,39 @@ mod tests {
         events.sort_by(|x, y| x.sort_key().cmp(&y.sort_key()));
         let ids: Vec<_> = events.iter().map(|e| e.record_id.unwrap()).collect();
         assert_eq!(ids, [2, 9, 1]);
+    }
+
+    #[test]
+    fn event_ref_omits_absent_channel_and_record_id() {
+        let ts = Timestamp::from_second(1_700_000_000).unwrap();
+
+        let journald_ref = EventRef {
+            ts,
+            channel: Some("sshd".into()),
+            record_id: None,
+        };
+        let journald_json = serde_json::to_value(&journald_ref).unwrap();
+        assert_eq!(journald_json["ts"], "2023-11-14T22:13:20.000000Z");
+        assert_eq!(journald_json["channel"], "sshd");
+        assert!(journald_json.get("record_id").is_none());
+
+        let bare_ref = EventRef {
+            ts,
+            channel: None,
+            record_id: None,
+        };
+        let bare_json = serde_json::to_value(&bare_ref).unwrap();
+        assert_eq!(bare_json["ts"], "2023-11-14T22:13:20.000000Z");
+        assert!(bare_json.get("channel").is_none());
+        assert!(bare_json.get("record_id").is_none());
+
+        let full_ref = EventRef {
+            ts,
+            channel: Some("Security".into()),
+            record_id: Some(42),
+        };
+        let full_json = serde_json::to_value(&full_ref).unwrap();
+        assert_eq!(full_json["channel"], "Security");
+        assert_eq!(full_json["record_id"], 42);
     }
 }
