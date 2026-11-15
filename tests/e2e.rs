@@ -588,6 +588,23 @@ fn every_jsonl_event_across_all_fixtures_matches_schema() {
         "kerberos_service_ticket",
         "kerberos_preauth_failure",
         "ntlm_auth",
+        "network_connect",
+        "image_load",
+        "remote_thread",
+        "process_access",
+        "file_create",
+        "file_delete",
+        "registry_change",
+        "named_pipe",
+        "dns_query",
+        "wmi_persistence",
+        "rdp_connect",
+        "rdp_session",
+        "defender_detection",
+        "defender_config_change",
+        "bits_job",
+        "powershell_pipeline",
+        "powershell_engine",
     ]);
 
     for (idx, event) in events.iter().enumerate() {

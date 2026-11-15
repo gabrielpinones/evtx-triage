@@ -10,9 +10,9 @@ use anstyle::{AnsiColor, Style};
 use anyhow::Context;
 use jiff::{SignedDuration, Timestamp};
 
-use crate::cli::OutputFormat;
+use crate::cli::{OutputFormat, OutputProfile};
 use crate::detect::{self, DetectOptions};
-use crate::model::{Severity, TimelineEvent};
+use crate::model::{EventKind, Severity, TimelineEvent};
 use crate::output;
 use crate::output::table::severity_style;
 use crate::source::{self, ReadOptions};
@@ -30,6 +30,11 @@ pub struct TimelineOptions {
     /// Empty means every supported event id.
     pub event_ids: Vec<u32>,
     pub flagged_only: bool,
+    pub profile: OutputProfile,
+    /// Empty means do not restrict by kind (the profile applies instead).
+    pub kinds: Vec<EventKind>,
+    /// Kinds dropped after every other filter.
+    pub exclude_kinds: Vec<EventKind>,
     /// Correlation window handed to the detection rules.
     pub window: SignedDuration,
     pub read: ReadOptions,
@@ -48,6 +53,7 @@ pub struct RunSummary {
     pub record_errors: u64,
     pub events_written: u64,
     pub events_flagged: u64,
+    pub events_hidden: u64,
     /// Flags on the written events, by severity and rule.
     pub flag_counts: BTreeMap<(Severity, &'static str), u64>,
 }
@@ -86,6 +92,14 @@ impl RunSummary {
                 out,
                 "  {style}{:<6}{style:#}  {hits:>4}  {rule}",
                 severity.as_str()
+            );
+        }
+
+        if self.events_hidden > 0 {
+            let _ = writeln!(
+                out,
+                "{} hidden by the triage profile (--profile full shows them)",
+                count(self.events_hidden, "event", "events")
             );
         }
 
@@ -167,13 +181,14 @@ pub fn run_timeline(options: &TimelineOptions, out: &mut dyn Write) -> anyhow::R
         );
     }
 
-    let final_events = process_events(events, options);
+    let (final_events, hidden) = process_events(events, options);
     match options.format {
         OutputFormat::Jsonl => output::write_jsonl(out, &final_events)?,
         OutputFormat::Csv => output::write_csv(out, &final_events)?,
         OutputFormat::Table => output::write_table(out, &final_events)?,
     }
 
+    summary.events_hidden = hidden;
     summary.events_written = final_events.len() as u64;
     summary.events_flagged = final_events.iter().filter(|e| !e.flags.is_empty()).count() as u64;
     for flag in final_events.iter().flat_map(|event| &event.flags) {
@@ -251,7 +266,17 @@ fn walk_dir(dir: &Path, files: &mut Vec<InputFile>) {
     }
 }
 
-fn process_events(mut events: Vec<TimelineEvent>, options: &TimelineOptions) -> Vec<TimelineEvent> {
+fn is_triage_noisy(kind: EventKind) -> bool {
+    matches!(
+        kind,
+        EventKind::ImageLoad | EventKind::FileCreate | EventKind::RegistryChange
+    )
+}
+
+fn process_events(
+    mut events: Vec<TimelineEvent>,
+    options: &TimelineOptions,
+) -> (Vec<TimelineEvent>, u64) {
     events.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
 
     let rules = detect::default_rules(&DetectOptions {
@@ -270,7 +295,24 @@ fn process_events(mut events: Vec<TimelineEvent>, options: &TimelineOptions) -> 
             && (!options.flagged_only || !event.flags.is_empty())
     });
 
-    events
+    let mut hidden_by_profile = 0u64;
+    if !options.kinds.is_empty() {
+        events.retain(|event| options.kinds.contains(&event.kind));
+    } else if options.profile == OutputProfile::Triage {
+        events.retain(|event| {
+            let hide = is_triage_noisy(event.kind) && event.flags.is_empty();
+            if hide {
+                hidden_by_profile = hidden_by_profile.saturating_add(1);
+            }
+            !hide
+        });
+    }
+
+    if !options.exclude_kinds.is_empty() {
+        events.retain(|event| !options.exclude_kinds.contains(&event.kind));
+    }
+
+    (events, hidden_by_profile)
 }
 
 #[cfg(test)]
@@ -280,11 +322,11 @@ mod tests {
     use jiff::{SignedDuration, Timestamp};
     use tempfile::TempDir;
 
-    use crate::cli::OutputFormat;
+    use crate::cli::{OutputFormat, OutputProfile};
     use crate::model::{EventKind, Flag, Severity, SourceKind, TimelineEvent};
     use crate::source::ReadOptions;
 
-    use super::{TimelineOptions, collect_files, process_events, run_timeline};
+    use super::{RunSummary, TimelineOptions, collect_files, process_events, run_timeline};
 
     fn default_options() -> TimelineOptions {
         TimelineOptions {
@@ -294,6 +336,9 @@ mod tests {
             to: None,
             event_ids: Vec::new(),
             flagged_only: false,
+            profile: OutputProfile::Triage,
+            kinds: Vec::new(),
+            exclude_kinds: Vec::new(),
             window: SignedDuration::from_mins(5),
             read: ReadOptions::default(),
         }
@@ -320,7 +365,8 @@ mod tests {
         let e2 = make_event(10, Some(5), Some(4624));
         let e3 = make_event(10, Some(2), Some(4624));
 
-        let out = process_events(vec![e1, e2, e3], &default_options());
+        let (out, hidden) = process_events(vec![e1, e2, e3], &default_options());
+        assert_eq!(hidden, 0);
         let ids: Vec<_> = out
             .iter()
             .map(|e| (e.ts.as_second(), e.record_id))
@@ -338,7 +384,7 @@ mod tests {
         opts.from = Some(Timestamp::from_second(100).unwrap());
         opts.to = Some(Timestamp::from_second(300).unwrap());
 
-        let out = process_events(vec![e1, e2, e3], &opts);
+        let (out, _) = process_events(vec![e1, e2, e3], &opts);
         let secs: Vec<_> = out.iter().map(|e| e.ts.as_second()).collect();
         assert_eq!(secs, [100, 200]);
     }
@@ -352,7 +398,7 @@ mod tests {
         let mut opts = default_options();
         opts.event_ids = vec![4624];
 
-        let out = process_events(vec![e1, e2, e3], &opts);
+        let (out, _) = process_events(vec![e1, e2, e3], &opts);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].record_id, Some(1));
     }
@@ -371,7 +417,7 @@ mod tests {
         let mut opts = default_options();
         opts.flagged_only = true;
 
-        let out = process_events(vec![e1, e2], &opts);
+        let (out, _) = process_events(vec![e1, e2], &opts);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].record_id, Some(2));
     }
@@ -407,7 +453,7 @@ mod tests {
         opts.event_ids = vec![4624];
         opts.flagged_only = true;
 
-        let out = process_events(vec![e1, e2, e3, e4], &opts);
+        let (out, _) = process_events(vec![e1, e2, e3, e4], &opts);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].record_id, Some(1));
     }
@@ -492,5 +538,137 @@ mod tests {
         let msg = format!("{err:#}");
         assert!(msg.contains("1 skipped"), "unexpected error: {msg}");
         assert!(out.is_empty());
+    }
+
+    fn make_kind_event(sec: i64, record_id: u64, kind: EventKind) -> TimelineEvent {
+        let ts = Timestamp::from_second(sec).unwrap();
+        let mut ev = TimelineEvent::new(ts, "host", SourceKind::Evtx, kind, "f.evtx");
+        ev.record_id = Some(record_id);
+        ev
+    }
+
+    fn sample_flag() -> Flag {
+        Flag {
+            rule: "test_rule",
+            severity: Severity::Medium,
+            reason: "suspicious".into(),
+            related: vec![],
+        }
+    }
+
+    #[test]
+    fn triage_profile_drops_unflagged_noisy_kinds_and_counts_them() {
+        let keep_proc = make_kind_event(10, 1, EventKind::ProcessCreate);
+        let drop_img = make_kind_event(20, 2, EventKind::ImageLoad);
+        let mut keep_img_flagged = make_kind_event(30, 3, EventKind::ImageLoad);
+        keep_img_flagged.flags.push(sample_flag());
+        let drop_file = make_kind_event(40, 4, EventKind::FileCreate);
+        let mut keep_reg_flagged = make_kind_event(50, 5, EventKind::RegistryChange);
+        keep_reg_flagged.flags.push(sample_flag());
+        let drop_reg = make_kind_event(60, 6, EventKind::RegistryChange);
+        let keep_del = make_kind_event(70, 7, EventKind::FileDelete);
+
+        let (out, hidden) = process_events(
+            vec![
+                keep_proc,
+                drop_img,
+                keep_img_flagged,
+                drop_file,
+                keep_reg_flagged,
+                drop_reg,
+                keep_del,
+            ],
+            &default_options(),
+        );
+        let ids: Vec<_> = out.iter().filter_map(|e| e.record_id).collect();
+        assert_eq!(ids, [1, 3, 5, 7]);
+        assert_eq!(hidden, 3);
+    }
+
+    #[test]
+    fn full_profile_keeps_all_events_and_hides_zero() {
+        let events = vec![
+            make_kind_event(10, 1, EventKind::ProcessCreate),
+            make_kind_event(20, 2, EventKind::ImageLoad),
+            make_kind_event(30, 3, EventKind::FileCreate),
+            make_kind_event(40, 4, EventKind::RegistryChange),
+        ];
+
+        let mut opts = default_options();
+        opts.profile = OutputProfile::Full;
+
+        let (out, hidden) = process_events(events, &opts);
+        assert_eq!(out.len(), 4);
+        assert_eq!(hidden, 0);
+    }
+
+    #[test]
+    fn kind_filter_overrides_triage_profile() {
+        let events = vec![
+            make_kind_event(10, 1, EventKind::ProcessCreate),
+            make_kind_event(20, 2, EventKind::ImageLoad),
+            make_kind_event(30, 3, EventKind::FileCreate),
+        ];
+
+        let mut opts = default_options();
+        opts.profile = OutputProfile::Triage;
+        opts.kinds = vec![EventKind::ImageLoad];
+
+        let (out, hidden) = process_events(events, &opts);
+        let ids: Vec<_> = out.iter().filter_map(|e| e.record_id).collect();
+        assert_eq!(ids, [2]);
+        assert_eq!(hidden, 0);
+    }
+
+    #[test]
+    fn exclude_kind_applies_after_kind_and_profile() {
+        let events = vec![
+            make_kind_event(10, 1, EventKind::ProcessCreate),
+            make_kind_event(20, 2, EventKind::ImageLoad),
+            make_kind_event(30, 3, EventKind::FileCreate),
+            make_kind_event(40, 4, EventKind::NetworkConnect),
+        ];
+
+        let mut opts = default_options();
+        opts.kinds = vec![EventKind::ImageLoad, EventKind::NetworkConnect];
+        opts.exclude_kinds = vec![EventKind::ImageLoad];
+
+        let (out, hidden) = process_events(events.clone(), &opts);
+        let ids: Vec<_> = out.iter().filter_map(|e| e.record_id).collect();
+        assert_eq!(ids, [4]);
+        assert_eq!(hidden, 0);
+
+        let mut full_opts = default_options();
+        full_opts.profile = OutputProfile::Full;
+        full_opts.exclude_kinds = vec![EventKind::FileCreate];
+
+        let (out, hidden) = process_events(events, &full_opts);
+        let ids: Vec<_> = out.iter().filter_map(|e| e.record_id).collect();
+        assert_eq!(ids, [1, 2, 4]);
+        assert_eq!(hidden, 0);
+    }
+
+    #[test]
+    fn summary_render_prints_hidden_count_line_only_when_nonzero() {
+        let mut summary = RunSummary {
+            files_read: 1,
+            events_written: 10,
+            ..Default::default()
+        };
+        assert!(!summary.render().contains("hidden by the triage profile"));
+
+        summary.events_hidden = 1;
+        assert!(
+            summary
+                .render()
+                .contains("1 event hidden by the triage profile (--profile full shows them)\n")
+        );
+
+        summary.events_hidden = 1204;
+        assert!(
+            summary
+                .render()
+                .contains("1204 events hidden by the triage profile (--profile full shows them)\n")
+        );
     }
 }

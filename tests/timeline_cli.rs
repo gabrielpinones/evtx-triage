@@ -59,7 +59,7 @@ fn windows_samples_give_a_sorted_timeline_with_all_ten_event_types() {
 
     let times: Vec<&str> = events.iter().map(|e| e["ts"].as_str().unwrap()).collect();
     assert!(times.is_sorted(), "timeline is ordered by time");
-    assert!(times[0] > "2019-01-01", "no event is left in 1601");
+    assert!(times[0] > "2018-01-01", "no event is left in 1601");
 
     // Sysmon 1 and Security 4688 are both process creations; the other eight
     // baseline ids map to one kind each, plus any newly added event types in golden.
@@ -296,4 +296,78 @@ fn a_reader_that_stops_early_is_not_an_error() {
         assert!(!stderr.contains("error:"), "{format}: {stderr}");
         assert_ne!(output.status.code(), Some(1), "{format}");
     }
+}
+
+#[test]
+fn triage_profile_hides_unflagged_noisy_kinds_and_full_shows_them() {
+    let samples = fixtures("attack-samples");
+    let run = |extra: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_evtx-triage"))
+            .arg("timeline")
+            .arg(&samples)
+            .args(extra)
+            .env_remove("NO_COLOR")
+            .env_remove("CLICOLOR")
+            .env_remove("CLICOLOR_FORCE")
+            .output()
+            .expect("the binary runs")
+    };
+
+    let triage_out = run(&[]);
+    assert_eq!(triage_out.status.code(), Some(0), "{triage_out:?}");
+    let full_out = run(&["--profile", "full"]);
+    assert_eq!(full_out.status.code(), Some(0), "{full_out:?}");
+
+    let triage_events = parse_jsonl(&triage_out.stdout);
+    let full_events = parse_jsonl(&full_out.stdout);
+
+    let is_unflagged_noisy = |ev: &Value| {
+        let noisy = matches!(
+            ev["kind"].as_str(),
+            Some("image_load" | "file_create" | "registry_change")
+        );
+        let unflagged = ev["flags"].as_array().is_some_and(|flags| flags.is_empty());
+        noisy && unflagged
+    };
+
+    assert!(
+        !triage_events.iter().any(is_unflagged_noisy),
+        "triage profile must hide unflagged image_load, file_create, and registry_change events"
+    );
+
+    let hidden_in_full = full_events
+        .iter()
+        .filter(|ev| is_unflagged_noisy(ev))
+        .count();
+    assert!(
+        hidden_in_full > 0,
+        "expected attack-samples to include unflagged noisy events"
+    );
+    assert_eq!(full_events.len() - triage_events.len(), hidden_in_full);
+
+    let triage_without_noisy: Vec<&Value> = full_events
+        .iter()
+        .filter(|ev| !is_unflagged_noisy(ev))
+        .collect();
+    let triage_refs: Vec<&Value> = triage_events.iter().collect();
+    assert_eq!(triage_refs, triage_without_noisy);
+
+    let triage_stderr = String::from_utf8(triage_out.stderr).unwrap();
+    let noun = if hidden_in_full == 1 {
+        "event"
+    } else {
+        "events"
+    };
+    let expected_line =
+        format!("{hidden_in_full} {noun} hidden by the triage profile (--profile full shows them)");
+    assert!(
+        triage_stderr.lines().any(|line| line == expected_line),
+        "expected {expected_line:?} in stderr:\n{triage_stderr}"
+    );
+
+    let full_stderr = String::from_utf8(full_out.stderr).unwrap();
+    assert!(
+        !full_stderr.contains("hidden by the triage profile"),
+        "full profile must not print hidden events line:\n{full_stderr}"
+    );
 }

@@ -9,7 +9,9 @@ use clap::Parser;
 use jiff::{SignedDuration, Timestamp};
 use serde_json::Value;
 
-use evtx_triage::cli::{Cli, Command as CliCommand};
+use evtx_triage::cli::{Cli, Command as CliCommand, OutputProfile};
+use evtx_triage::model::EventKind;
+use evtx_triage::pipeline::RunSummary;
 
 fn fixture(rel: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -229,6 +231,12 @@ fn timeline_help_lists_every_struct_option_format_values_and_window_default() {
         help.contains("[default: 5m]"),
         "default window 5m missing from `timeline --help`:\n{help}"
     );
+    for profile in ["triage", "full", "[default: triage]"] {
+        assert!(
+            help.contains(profile),
+            "profile token {profile} missing from `timeline --help`:\n{help}"
+        );
+    }
 }
 
 #[test]
@@ -350,6 +358,42 @@ fn invalid_format_lists_possible_values() {
             stderr.contains(allowed),
             "expected {allowed} in possible values message, got:\n{stderr}"
         );
+    }
+}
+
+#[test]
+fn invalid_profile_lists_possible_values() {
+    let output = run_cli(&["timeline", "--profile", "fast", "a.evtx"]);
+    let stderr = assert_usage_error(&output, "--profile fast");
+    for allowed in ["triage", "full"] {
+        assert!(
+            stderr.contains(allowed),
+            "expected {allowed} in possible values message, got:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn unknown_kind_and_exclude_kind_list_valid_names() {
+    let cases = [
+        vec!["timeline", "--kind", "nope", "a.evtx"],
+        vec!["timeline", "--kind", "process_create,nope", "a.evtx"],
+        vec!["timeline", "--exclude-kind", "nope", "a.evtx"],
+    ];
+    for args in &cases {
+        let output = run_cli(args);
+        let stderr = assert_usage_error(&output, &args.join(" "));
+        assert!(
+            stderr.contains("nope"),
+            "expected bad name in stderr:\n{stderr}"
+        );
+        for &kind in EventKind::ALL {
+            assert!(
+                stderr.contains(kind.as_str()),
+                "missing valid kind '{}' in error:\n{stderr}",
+                kind.as_str()
+            );
+        }
     }
 }
 
@@ -1069,4 +1113,94 @@ fn symlink_loop_inside_directory_does_not_hang() {
         stderr_str(&output)
     );
     assert_eq!(parse_jsonl(&output.stdout).len(), expected);
+}
+
+#[test]
+fn profile_kind_and_exclude_kind_cli_parsing_and_filtering() {
+    let cli = Cli::try_parse_from([
+        "evtx-triage",
+        "timeline",
+        "a.evtx",
+        "--profile",
+        "full",
+        "--kind",
+        "logon_success,process_create",
+        "--exclude-kind",
+        "logoff",
+    ])
+    .expect("new filter options parse");
+    let CliCommand::Timeline(args) = cli.command else {
+        panic!("expected timeline");
+    };
+    assert_eq!(args.profile, OutputProfile::Full);
+    assert_eq!(
+        args.kind,
+        [EventKind::LogonSuccess, EventKind::ProcessCreate]
+    );
+    assert_eq!(args.exclude_kind, [EventKind::Logoff]);
+
+    let sample = fixture("attack-samples/4624 LT3 AnonymousLogon Localhost - JuicyPotato.evtx");
+    let full = run_cli_paths([
+        "timeline".as_ref(),
+        "--profile".as_ref(),
+        "full".as_ref(),
+        sample.as_os_str(),
+    ]);
+    assert_eq!(full.status.code(), Some(0));
+    let full_events = parse_jsonl(&full.stdout);
+    assert!(full_events.len() >= 2);
+
+    let only_clear = run_cli_paths([
+        "timeline".as_ref(),
+        "--kind".as_ref(),
+        "log_clear".as_ref(),
+        sample.as_os_str(),
+    ]);
+    assert_eq!(only_clear.status.code(), Some(0));
+    let clear_events = parse_jsonl(&only_clear.stdout);
+    assert!(!clear_events.is_empty());
+    assert!(clear_events.iter().all(|e| e["kind"] == "log_clear"));
+
+    let excl_clear = run_cli_paths([
+        "timeline".as_ref(),
+        "--exclude-kind".as_ref(),
+        "log_clear".as_ref(),
+        sample.as_os_str(),
+    ]);
+    assert_eq!(excl_clear.status.code(), Some(0));
+    let excl_events = parse_jsonl(&excl_clear.stdout);
+    assert!(!excl_events.iter().any(|e| e["kind"] == "log_clear"));
+    assert_eq!(
+        excl_events.len() + clear_events.len(),
+        full_events.len(),
+        "excluding log_clear should drop only log_clear events"
+    );
+}
+
+#[test]
+fn triage_hidden_stderr_line_matches_contract() {
+    let summary = RunSummary {
+        files_read: 2,
+        events_written: 15,
+        events_hidden: 1204,
+        ..Default::default()
+    };
+    let rendered = summary.render();
+    let plain = anstream::adapter::strip_str(&rendered).to_string();
+    assert!(
+        plain
+            .lines()
+            .any(|line| line
+                == "1204 events hidden by the triage profile (--profile full shows them)"),
+        "expected hidden count line on its own line, got:\n{plain}"
+    );
+
+    let clean = fixture("format/Security_short_selected.evtx");
+    let out = run_cli_paths(["timeline".as_ref(), clean.as_os_str()]);
+    assert_eq!(out.status.code(), Some(0));
+    let stderr = stderr_str(&out);
+    assert!(
+        !stderr.contains("hidden by the triage profile"),
+        "should not print hidden line when 0 events are hidden:\n{stderr}"
+    );
 }

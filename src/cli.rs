@@ -5,10 +5,14 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use jiff::{SignedDuration, Timestamp};
 
+use crate::model::EventKind;
+
 const EXAMPLES: &str = "\
 Examples:
   evtx-triage timeline Security.evtx System.evtx
   evtx-triage timeline ./winevt/Logs --flagged-only
+  evtx-triage timeline ./logs --profile full
+  evtx-triage timeline ./logs --kind process_create,logon_success --exclude-kind logoff
   evtx-triage timeline ./logs --format csv -o timeline.csv
   evtx-triage timeline ./logs --from 2024-05-01T00:00:00Z --to 2024-05-02T00:00:00Z
   evtx-triage timeline audit.log --host web01
@@ -53,6 +57,15 @@ pub enum OutputFormat {
     Csv,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub enum OutputProfile {
+    /// Drop unflagged image_load, file_create and registry_change events
+    #[default]
+    Triage,
+    /// Keep every extracted event
+    Full,
+}
+
 #[derive(Debug, Args)]
 pub struct TimelineArgs {
     /// Log files or directories (searched recursively)
@@ -82,6 +95,18 @@ pub struct TimelineArgs {
     /// Keep only events that raised at least one flag
     #[arg(long)]
     pub flagged_only: bool,
+
+    /// Output profile controlling high-volume events
+    #[arg(long, value_enum, default_value_t = OutputProfile::Triage)]
+    pub profile: OutputProfile,
+
+    /// Keep only these event kinds (comma separated; disables the profile)
+    #[arg(long, value_delimiter = ',')]
+    pub kind: Vec<EventKind>,
+
+    /// Drop these event kinds (comma separated; applied after everything else)
+    #[arg(long, value_delimiter = ',')]
+    pub exclude_kind: Vec<EventKind>,
 
     /// Correlation window for detection rules, for example 5m or 90s
     #[arg(long, default_value = "5m")]
@@ -154,6 +179,33 @@ mod tests {
         };
         assert_eq!(args.window, SignedDuration::from_mins(5));
         assert_eq!(args.format, None);
+        assert_eq!(args.profile, OutputProfile::Triage);
+        assert!(args.kind.is_empty());
+        assert!(args.exclude_kind.is_empty());
         assert!(!args.quiet);
+    }
+
+    #[test]
+    fn parses_profile_and_kind_filters() {
+        let cli = Cli::parse_from([
+            "evtx-triage",
+            "timeline",
+            "a.evtx",
+            "--profile",
+            "full",
+            "--kind",
+            "process_create,network_connect",
+            "--exclude-kind",
+            "logoff,image_load",
+        ]);
+        let Command::Timeline(args) = cli.command else {
+            panic!("expected timeline");
+        };
+        assert_eq!(args.profile, OutputProfile::Full);
+        assert_eq!(
+            args.kind,
+            [EventKind::ProcessCreate, EventKind::NetworkConnect]
+        );
+        assert_eq!(args.exclude_kind, [EventKind::Logoff, EventKind::ImageLoad]);
     }
 }

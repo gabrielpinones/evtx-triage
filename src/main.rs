@@ -73,6 +73,9 @@ fn run_timeline(args: TimelineArgs) -> anyhow::Result<u8> {
         to: args.to,
         event_ids: args.event_id,
         flagged_only: args.flagged_only,
+        profile: args.profile,
+        kinds: args.kind,
+        exclude_kinds: args.exclude_kind,
         window: args.window,
         read: source::ReadOptions {
             host_fallback: args.host,

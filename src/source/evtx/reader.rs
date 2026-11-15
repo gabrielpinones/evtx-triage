@@ -248,6 +248,12 @@ mod tests {
         .unwrap();
         assert_eq!(stats.errors, 0);
         assert_eq!(count_kind(&events, EventKind::ProcessCreate), 3);
+        assert_eq!(count_kind(&events, EventKind::NetworkConnect), 2);
+        assert_eq!(count_kind(&events, EventKind::ProcessAccess), 1);
+        assert_eq!(count_kind(&events, EventKind::RegistryChange), 3);
+        assert_eq!(count_kind(&events, EventKind::NamedPipe), 1);
+        assert_eq!(events.len(), 10);
+        assert_eq!(stats.events_emitted, 10);
     }
 
     #[test]

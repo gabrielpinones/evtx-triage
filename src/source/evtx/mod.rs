@@ -1,6 +1,7 @@
 //! Windows EVTX event log source.
 
 mod account;
+mod defender;
 mod dispatch;
 mod fields;
 mod kerberos;
@@ -8,7 +9,9 @@ mod logon;
 mod powershell;
 mod process;
 mod reader;
+mod remote;
 mod service;
+mod sysmon;
 mod task;
 
 use std::path::Path;

@@ -1,6 +1,8 @@
 //! Normalized timeline model shared by every source, detection rule and writer.
 
 use std::collections::BTreeMap;
+use std::fmt;
+use std::str::FromStr;
 
 use jiff::Timestamp;
 use serde::{Serialize, Serializer};
@@ -49,9 +51,66 @@ pub enum EventKind {
     KerberosServiceTicket,
     KerberosPreauthFailure,
     NtlmAuth,
+    NetworkConnect,
+    ImageLoad,
+    RemoteThread,
+    ProcessAccess,
+    FileCreate,
+    FileDelete,
+    RegistryChange,
+    NamedPipe,
+    DnsQuery,
+    WmiPersistence,
+    RdpConnect,
+    RdpSession,
+    DefenderDetection,
+    DefenderConfigChange,
+    BitsJob,
+    PowershellPipeline,
+    PowershellEngine,
 }
 
 impl EventKind {
+    pub const ALL: &'static [Self] = &[
+        EventKind::LogonSuccess,
+        EventKind::LogonFailure,
+        EventKind::ExplicitLogon,
+        EventKind::Logoff,
+        EventKind::SpecialPrivileges,
+        EventKind::ProcessCreate,
+        EventKind::ServiceInstall,
+        EventKind::TaskCreate,
+        EventKind::TaskDelete,
+        EventKind::TaskUpdate,
+        EventKind::ScriptBlock,
+        EventKind::UserCreate,
+        EventKind::GroupMemberAdd,
+        EventKind::LogClear,
+        EventKind::PrivilegedCommand,
+        EventKind::ServiceStart,
+        EventKind::KerberosTgt,
+        EventKind::KerberosServiceTicket,
+        EventKind::KerberosPreauthFailure,
+        EventKind::NtlmAuth,
+        EventKind::NetworkConnect,
+        EventKind::ImageLoad,
+        EventKind::RemoteThread,
+        EventKind::ProcessAccess,
+        EventKind::FileCreate,
+        EventKind::FileDelete,
+        EventKind::RegistryChange,
+        EventKind::NamedPipe,
+        EventKind::DnsQuery,
+        EventKind::WmiPersistence,
+        EventKind::RdpConnect,
+        EventKind::RdpSession,
+        EventKind::DefenderDetection,
+        EventKind::DefenderConfigChange,
+        EventKind::BitsJob,
+        EventKind::PowershellPipeline,
+        EventKind::PowershellEngine,
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             EventKind::LogonSuccess => "logon_success",
@@ -74,7 +133,55 @@ impl EventKind {
             EventKind::KerberosServiceTicket => "kerberos_service_ticket",
             EventKind::KerberosPreauthFailure => "kerberos_preauth_failure",
             EventKind::NtlmAuth => "ntlm_auth",
+            EventKind::NetworkConnect => "network_connect",
+            EventKind::ImageLoad => "image_load",
+            EventKind::RemoteThread => "remote_thread",
+            EventKind::ProcessAccess => "process_access",
+            EventKind::FileCreate => "file_create",
+            EventKind::FileDelete => "file_delete",
+            EventKind::RegistryChange => "registry_change",
+            EventKind::NamedPipe => "named_pipe",
+            EventKind::DnsQuery => "dns_query",
+            EventKind::WmiPersistence => "wmi_persistence",
+            EventKind::RdpConnect => "rdp_connect",
+            EventKind::RdpSession => "rdp_session",
+            EventKind::DefenderDetection => "defender_detection",
+            EventKind::DefenderConfigChange => "defender_config_change",
+            EventKind::BitsJob => "bits_job",
+            EventKind::PowershellPipeline => "powershell_pipeline",
+            EventKind::PowershellEngine => "powershell_engine",
         }
+    }
+}
+
+/// Error returned when parsing an [`EventKind`] from an unknown name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseEventKindError(String);
+
+impl fmt::Display for ParseEventKindError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unknown event kind '{}' (valid kinds: ", self.0)?;
+        for (i, kind) in EventKind::ALL.iter().enumerate() {
+            if i > 0 {
+                f.write_str(", ")?;
+            }
+            f.write_str(kind.as_str())?;
+        }
+        f.write_str(")")
+    }
+}
+
+impl std::error::Error for ParseEventKindError {}
+
+impl FromStr for EventKind {
+    type Err = ParseEventKindError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|kind| kind.as_str() == s)
+            .ok_or_else(|| ParseEventKindError(s.to_string()))
     }
 }
 
@@ -327,5 +434,90 @@ mod tests {
         let full_json = serde_json::to_value(&full_ref).unwrap();
         assert_eq!(full_json["channel"], "Security");
         assert_eq!(full_json["record_id"], 42);
+    }
+
+    #[test]
+    fn event_kind_all_contains_every_variant() {
+        let mut seen = std::collections::BTreeSet::new();
+        for &kind in EventKind::ALL {
+            assert!(
+                seen.insert(kind.as_str()),
+                "duplicate variant in EventKind::ALL: {}",
+                kind.as_str()
+            );
+        }
+
+        // Exhaustive match fails to compile if a new variant is added without
+        // updating ALL and its count here.
+        let index = |kind: EventKind| -> usize {
+            match kind {
+                EventKind::LogonSuccess => 0,
+                EventKind::LogonFailure => 1,
+                EventKind::ExplicitLogon => 2,
+                EventKind::Logoff => 3,
+                EventKind::SpecialPrivileges => 4,
+                EventKind::ProcessCreate => 5,
+                EventKind::ServiceInstall => 6,
+                EventKind::TaskCreate => 7,
+                EventKind::TaskDelete => 8,
+                EventKind::TaskUpdate => 9,
+                EventKind::ScriptBlock => 10,
+                EventKind::UserCreate => 11,
+                EventKind::GroupMemberAdd => 12,
+                EventKind::LogClear => 13,
+                EventKind::PrivilegedCommand => 14,
+                EventKind::ServiceStart => 15,
+                EventKind::KerberosTgt => 16,
+                EventKind::KerberosServiceTicket => 17,
+                EventKind::KerberosPreauthFailure => 18,
+                EventKind::NtlmAuth => 19,
+                EventKind::NetworkConnect => 20,
+                EventKind::ImageLoad => 21,
+                EventKind::RemoteThread => 22,
+                EventKind::ProcessAccess => 23,
+                EventKind::FileCreate => 24,
+                EventKind::FileDelete => 25,
+                EventKind::RegistryChange => 26,
+                EventKind::NamedPipe => 27,
+                EventKind::DnsQuery => 28,
+                EventKind::WmiPersistence => 29,
+                EventKind::RdpConnect => 30,
+                EventKind::RdpSession => 31,
+                EventKind::DefenderDetection => 32,
+                EventKind::DefenderConfigChange => 33,
+                EventKind::BitsJob => 34,
+                EventKind::PowershellPipeline => 35,
+                EventKind::PowershellEngine => 36,
+            }
+        };
+        let indices: std::collections::BTreeSet<usize> =
+            EventKind::ALL.iter().map(|&k| index(k)).collect();
+        assert_eq!(indices.len(), 37);
+        assert_eq!(EventKind::ALL.len(), 37);
+    }
+
+    #[test]
+    fn event_kind_as_str_and_parse_round_trip() {
+        for &kind in EventKind::ALL {
+            let name = kind.as_str();
+            assert_eq!(
+                serde_json::to_value(kind).unwrap().as_str().unwrap(),
+                name,
+                "serde snake_case name and as_str disagree for {kind:?}"
+            );
+            let parsed: EventKind = name.parse().expect("as_str name should parse back");
+            assert_eq!(parsed, kind);
+        }
+
+        let err = "not_a_kind".parse::<EventKind>().unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("not_a_kind"), "unexpected error: {msg}");
+        for &kind in EventKind::ALL {
+            assert!(
+                msg.contains(kind.as_str()),
+                "missing {} in {msg}",
+                kind.as_str()
+            );
+        }
     }
 }

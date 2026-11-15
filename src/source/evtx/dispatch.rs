@@ -5,19 +5,28 @@ use serde_json::Value;
 use crate::model::TimelineEvent;
 use crate::source::evtx::fields::RecordMeta;
 use crate::source::evtx::powershell::ScriptBlockCollector;
-use crate::source::evtx::{account, kerberos, logon, process, service, task};
+use crate::source::evtx::{
+    account, defender, kerberos, logon, powershell, process, remote, service, sysmon, task,
+};
 
 const SECURITY: &str = "Microsoft-Windows-Security-Auditing";
 const EVENTLOG: &str = "Microsoft-Windows-Eventlog";
 const SCM: &str = "Service Control Manager";
 const SYSMON: &str = "Microsoft-Windows-Sysmon";
 const POWERSHELL: &str = "Microsoft-Windows-PowerShell";
+const CLASSIC_POWERSHELL: &str = "PowerShell";
+const TS_RCM: &str = "Microsoft-Windows-TerminalServices-RemoteConnectionManager";
+const TS_LSM: &str = "Microsoft-Windows-TerminalServices-LocalSessionManager";
+const BITS: &str = "Microsoft-Windows-Bits-Client";
+const WMI_ACTIVITY: &str = "Microsoft-Windows-WMI-Activity";
+const DEFENDER: &str = "Microsoft-Windows-Windows Defender";
 
 enum Handler {
     Event(fn(&RecordMeta, &Value) -> TimelineEvent),
     OptionalEvent(fn(&RecordMeta, &Value) -> Option<TimelineEvent>),
     LogFileCleared(fn(&RecordMeta, &Value) -> TimelineEvent),
     LogFileClearedOptional(fn(&RecordMeta, &Value) -> Option<TimelineEvent>),
+    UserData(fn(&RecordMeta, &Value) -> Option<TimelineEvent>),
     PowerShellScriptBlock,
 }
 
@@ -85,7 +94,68 @@ const HANDLERS: &[(&str, u32, Handler)] = &[
     ),
     (SCM, 7045, Handler::Event(service::extract_7045)),
     (SYSMON, 1, Handler::Event(process::extract_sysmon_1)),
+    (SYSMON, 3, Handler::OptionalEvent(sysmon::extract_3)),
+    (SYSMON, 7, Handler::OptionalEvent(sysmon::extract_7)),
+    (SYSMON, 8, Handler::OptionalEvent(sysmon::extract_8)),
+    (SYSMON, 10, Handler::OptionalEvent(sysmon::extract_10)),
+    (SYSMON, 11, Handler::OptionalEvent(sysmon::extract_11)),
+    (SYSMON, 12, Handler::OptionalEvent(sysmon::extract_12)),
+    (SYSMON, 13, Handler::OptionalEvent(sysmon::extract_13)),
+    (SYSMON, 14, Handler::OptionalEvent(sysmon::extract_14)),
+    (SYSMON, 17, Handler::OptionalEvent(sysmon::extract_17)),
+    (SYSMON, 18, Handler::OptionalEvent(sysmon::extract_18)),
+    (SYSMON, 19, Handler::OptionalEvent(sysmon::extract_19)),
+    (SYSMON, 20, Handler::OptionalEvent(sysmon::extract_20)),
+    (SYSMON, 21, Handler::OptionalEvent(sysmon::extract_21)),
+    (SYSMON, 22, Handler::OptionalEvent(sysmon::extract_22)),
+    (SYSMON, 23, Handler::OptionalEvent(sysmon::extract_23)),
+    (TS_RCM, 1149, Handler::UserData(remote::extract_rdp_1149)),
+    (TS_LSM, 21, Handler::UserData(remote::extract_lsm_21)),
+    (TS_LSM, 24, Handler::UserData(remote::extract_lsm_24)),
+    (TS_LSM, 25, Handler::UserData(remote::extract_lsm_25)),
+    (BITS, 59, Handler::OptionalEvent(remote::extract_bits_59)),
+    (BITS, 60, Handler::OptionalEvent(remote::extract_bits_60)),
+    (
+        WMI_ACTIVITY,
+        5861,
+        Handler::UserData(remote::extract_wmi_5861),
+    ),
+    (
+        DEFENDER,
+        1116,
+        Handler::OptionalEvent(defender::extract_1116),
+    ),
+    (
+        DEFENDER,
+        1117,
+        Handler::OptionalEvent(defender::extract_1117),
+    ),
+    (
+        DEFENDER,
+        5001,
+        Handler::OptionalEvent(defender::extract_5001),
+    ),
+    (
+        POWERSHELL,
+        4103,
+        Handler::OptionalEvent(powershell::extract_4103),
+    ),
     (POWERSHELL, 4104, Handler::PowerShellScriptBlock),
+    (
+        CLASSIC_POWERSHELL,
+        400,
+        Handler::OptionalEvent(powershell::extract_400),
+    ),
+    (
+        CLASSIC_POWERSHELL,
+        600,
+        Handler::OptionalEvent(powershell::extract_600),
+    ),
+    (
+        CLASSIC_POWERSHELL,
+        800,
+        Handler::OptionalEvent(powershell::extract_800),
+    ),
 ];
 
 fn find_handler(provider: &str, event_id: u32) -> Option<&'static Handler> {
@@ -128,9 +198,27 @@ pub(crate) fn dispatch(
                 out.push(event);
             }
         }
+        Handler::UserData(extract) => {
+            if let Some(event) = extract(meta, user_data_inner(user_data)) {
+                out.push(event);
+            }
+        }
         Handler::PowerShellScriptBlock => ps_collector.push(meta, event_data),
     }
     true
+}
+
+fn user_data_inner(user_data: &Value) -> &Value {
+    user_data
+        .get("EventXML")
+        .or_else(|| {
+            user_data
+                .as_object()?
+                .iter()
+                .find(|(key, value)| key.as_str() != "#attributes" && value.is_object())
+                .map(|(_, value)| value)
+        })
+        .unwrap_or(&Value::Null)
 }
 
 #[cfg(test)]
@@ -265,5 +353,49 @@ mod tests {
         assert_eq!(finished, 1);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].kind, EventKind::ScriptBlock);
+    }
+
+    #[test]
+    fn user_data_inner_unwraps_event_xml_and_other_named_elements() {
+        let rdp_1149 = json!({
+            "EventXML": {
+                "#attributes": {
+                    "xmlns": "Event_NS"
+                },
+                "Param1": "administrator",
+                "Param2": "ie11win7",
+                "Param3": "10.0.2.16"
+            }
+        });
+        assert_eq!(user_data_inner(&rdp_1149)["Param1"], "administrator");
+        assert_eq!(user_data_inner(&rdp_1149)["Param3"], "10.0.2.16");
+
+        let wmi_5861 = json!({
+            "#attributes": {"xmlns": "http://schemas.microsoft.com/win/2004/08/events/event"},
+            "Operation_ESStoConsumerBinding": {
+                "NamespaceName": "root\\cimv2",
+                "CONSUMER": "CommandLineEventConsumer.Name=\"Bot\""
+            }
+        });
+        assert_eq!(user_data_inner(&wmi_5861)["NamespaceName"], "root\\cimv2");
+        assert!(user_data_inner(&Value::Null).is_null());
+    }
+
+    #[test]
+    fn powershell_and_defender_providers_stay_distinct() {
+        assert!(is_supported("Microsoft-Windows-PowerShell", 4103));
+        assert!(is_supported("Microsoft-Windows-PowerShell", 4104));
+        assert!(!is_supported("Microsoft-Windows-PowerShell", 800));
+        assert!(!is_supported("Microsoft-Windows-PowerShell", 400));
+
+        assert!(is_supported("PowerShell", 800));
+        assert!(is_supported("PowerShell", 400));
+        assert!(is_supported("PowerShell", 600));
+        assert!(!is_supported("PowerShell", 4104));
+
+        assert!(is_supported("Microsoft-Windows-Windows Defender", 1116));
+        assert!(is_supported("Microsoft-Windows-Windows Defender", 1117));
+        assert!(is_supported("Microsoft-Windows-Windows Defender", 5001));
+        assert!(!is_supported("Microsoft-Windows-Defender", 1116));
     }
 }

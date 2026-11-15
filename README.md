@@ -65,11 +65,32 @@ All times are UTC. Colors follow `NO_COLOR` and `CLICOLOR_FORCE`.
 | System | 104 | `log_clear` |
 | System | 7045 | `service_install` |
 | Sysmon | 1 | `process_create` |
+| Sysmon | 3 | `network_connect` |
+| Sysmon | 7 | `image_load` |
+| Sysmon | 8 | `remote_thread` |
+| Sysmon | 10 | `process_access` |
+| Sysmon | 11 | `file_create` |
+| Sysmon | 12, 13, 14 | `registry_change` |
+| Sysmon | 17, 18 | `named_pipe` |
+| Sysmon | 19, 20, 21 | `wmi_persistence` |
+| Sysmon | 22 | `dns_query` |
+| Sysmon | 23 | `file_delete` |
+| TerminalServices-RemoteConnectionManager | 1149 | `rdp_connect` |
+| TerminalServices-LocalSessionManager | 21, 24, 25 | `rdp_session` |
+| Bits-Client | 59, 60 | `bits_job` |
+| WMI-Activity | 5861 | `wmi_persistence` |
+| Windows Defender | 1116, 1117 | `defender_detection` |
+| Windows Defender | 5001 | `defender_config_change` |
+| PowerShell | 4103 | `powershell_pipeline` |
 | PowerShell | 4104 | `script_block` |
+| Windows PowerShell (classic) | 800 | `powershell_pipeline` |
+| Windows PowerShell (classic) | 400, 600 | `powershell_engine` |
 | journald | sshd, sudo, su, useradd, logind, unit starts | `logon_*`, `privileged_command`, `user_create`, `service_start` |
 | auditd | execve, `USER_LOGIN`, `USER_AUTH`, `USER_CMD`, `ADD_USER`, `SERVICE_START` | `process_create`, `logon_*`, `privileged_command`, `user_create`, `service_start` |
 
 Every other record is counted and dropped.
+
+Sysmon image loads, file creations and registry changes run to millions on a real host. The default profile, `--profile triage`, leaves them out unless a rule flags one, and the summary says how many it left out. `--profile full` keeps them. `--kind` keeps only the kinds you list (the profile then does not apply) and `--exclude-kind` drops kinds.
 
 ## Suspicion flags
 
@@ -133,8 +154,9 @@ What a summary of the format leaves out, and what showed up when testing against
 
 ## Limits
 
-- Two dozen Windows event types. No Sigma engine, no live analysis, no memory or disk forensics.
-- 4647, 4697, 4728 and 4756 do not appear in any of the public samples used; their extractors are tested with records built from the documented schema.
+- About fifty Windows event types. No Sigma engine, no live analysis, no memory or disk forensics.
+- 4647, 4697, 4728 and 4756 do not appear in any of the public samples used; their extractors are tested with records built from the documented schema. The same holds for PowerShell 4103, 400 and 600, WMI-Activity 5861, Defender 5001 and the LocalSessionManager events.
+- Some fields are logged as references to the provider's message table (`%%1843`, `%%809` in Defender). They are kept as logged, because resolving them needs the message DLLs of a Windows host.
 - Binary XML is decoded by the [`evtx`](https://github.com/omerbenamram/evtx) crate. The hand-written parser stops at the record framing.
 - `remote_logon_then_service` is tested with hand-built events. Among the 278 public samples used, there is no pair of Security and System logs from the same host and time where it could be seen firing.
 - The Linux fixtures are synthetic. The journald reader was also checked against a real export of 20000 entries; the auditd reader has not been run on a real log.
