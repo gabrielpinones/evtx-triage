@@ -1,0 +1,33 @@
+[package]
+name = "evtx-triage"
+version = "0.1.0"
+edition = "2024"
+description = "Forensic timeline from Windows EVTX, journald and auditd logs, with simple suspicion flags"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["evtx", "forensics", "dfir", "timeline"]
+categories = ["command-line-utilities"]
+# Fixtures carry third-party licenses (see tests/fixtures/SOURCES.md).
+exclude = ["tests/fixtures"]
+
+[dependencies]
+anyhow = "1.0.104"
+base64 = "0.23.1"
+clap = { version = "4.6.7", features = ["derive"] }
+crc32fast = "1.5.5"
+csv = "1.4.0"
+evtx = { version = "0.15.1", default-features = false, features = ["multithreading"] }
+jiff = { version = "0.2.43", features = ["serde"] }
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+predicates = "3.1.4"
+tempfile = "3.27.0"
+
+[profile.release]
+lto = "thin"
+strip = true
