@@ -338,7 +338,7 @@ dependencies = [
 
 [[package]]
 name = "evtx-triage"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
