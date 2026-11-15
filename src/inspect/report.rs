@@ -1,5 +1,6 @@
 use std::fmt::Write;
 
+use anstyle::{AnsiColor, Style};
 use jiff::Timestamp;
 use serde::Serialize;
 
@@ -244,27 +245,22 @@ impl InspectReport {
             return;
         }
         for finding in &self.findings {
-            match finding.chunk_index {
-                Some(idx) => {
-                    let _ = writeln!(
-                        out,
-                        "  [{}] {} (chunk {}): {}",
-                        finding.severity.as_str(),
-                        finding.kind,
-                        idx,
-                        finding.message
-                    );
-                }
-                None => {
-                    let _ = writeln!(
-                        out,
-                        "  [{}] {}: {}",
-                        finding.severity.as_str(),
-                        finding.kind,
-                        finding.message
-                    );
-                }
-            }
+            let style = match finding.severity {
+                FindingSeverity::Error => AnsiColor::Red.on_default().bold(),
+                FindingSeverity::Warning => AnsiColor::Yellow.on_default(),
+                FindingSeverity::Info => Style::new().dimmed(),
+            };
+            let place = finding
+                .chunk_index
+                .map(|idx| format!(" (chunk {idx})"))
+                .unwrap_or_default();
+            let _ = writeln!(
+                out,
+                "  {style}{:<7} {}{style:#}{place}: {}",
+                finding.severity.as_str(),
+                finding.kind,
+                finding.message
+            );
         }
     }
 
@@ -273,7 +269,7 @@ impl InspectReport {
         let time_range = format_time_range(s.first_timestamp, s.last_timestamp);
         let _ = writeln!(
             out,
-            "Summary: {} chunks ({} valid, {} unused, {} bad), {} records, time range {}, findings: {} error, {} warning, {} info",
+            "Summary: {} chunk(s) ({} valid, {} unused, {} bad), {} record(s), time range {}, findings: {} error, {} warning, {} info",
             s.total_chunks,
             s.valid_chunks,
             s.unused_chunks,

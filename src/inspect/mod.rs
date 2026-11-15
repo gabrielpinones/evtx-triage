@@ -854,7 +854,7 @@ mod tests {
         let text_with = report.render_text(true);
         assert!(!text_without.contains("Records ("));
         assert!(text_with.contains("Records (7):"));
-        assert!(text_with.contains("Summary: 1 chunks"));
+        assert!(text_with.contains("Summary: 1 chunk(s)"));
     }
 
     #[test]

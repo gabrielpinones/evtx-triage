@@ -5,8 +5,31 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use jiff::{SignedDuration, Timestamp};
 
+const EXAMPLES: &str = "\
+Examples:
+  evtx-triage timeline Security.evtx System.evtx
+  evtx-triage timeline ./winevt/Logs --flagged-only
+  evtx-triage timeline ./logs --format csv -o timeline.csv
+  evtx-triage timeline ./logs --from 2024-05-01T00:00:00Z --to 2024-05-02T00:00:00Z
+  evtx-triage timeline audit.log --host web01
+  evtx-triage inspect Security.evtx
+
+Exit status:
+  0  everything was read
+  1  nothing could be produced
+  2  output was produced, but some input was damaged or unreadable
+     (for inspect: the file shows damage or signs of tampering)
+
+Colors follow the NO_COLOR and CLICOLOR_FORCE environment variables.";
+
+/// Forensic timeline from Windows EVTX, journald and auditd logs
+///
+/// Reads logs offline, keeps the events that matter for triage (logons,
+/// process creation, new services, scheduled tasks, PowerShell script blocks,
+/// account creation, log clearing), orders them by time and flags a few
+/// suspicious patterns.
 #[derive(Debug, Parser)]
-#[command(name = "evtx-triage", version, about)]
+#[command(name = "evtx-triage", version, after_help = EXAMPLES)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -22,7 +45,11 @@ pub enum Command {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
+    /// Aligned text for reading on a terminal
+    Table,
+    /// One JSON object per line, lossless
     Jsonl,
+    /// Spreadsheet-friendly, one row per event
     Csv,
 }
 
@@ -36,8 +63,9 @@ pub struct TimelineArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
-    #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl)]
-    pub format: OutputFormat,
+    /// Output format [default: table on a terminal, jsonl otherwise]
+    #[arg(long, value_enum)]
+    pub format: Option<OutputFormat>,
 
     /// Keep events at or after this UTC time (RFC 3339)
     #[arg(long)]
@@ -62,6 +90,10 @@ pub struct TimelineArgs {
     /// Host name for logs that do not record one
     #[arg(long)]
     pub host: Option<String>,
+
+    /// Do not print the run summary on stderr
+    #[arg(short, long)]
+    pub quiet: bool,
 }
 
 #[derive(Debug, Args)]
@@ -108,7 +140,7 @@ mod tests {
             panic!("expected timeline");
         };
         assert_eq!(args.paths.len(), 2);
-        assert_eq!(args.format, OutputFormat::Csv);
+        assert_eq!(args.format, Some(OutputFormat::Csv));
         assert_eq!(args.event_id, [4624, 7045]);
         assert_eq!(args.window, SignedDuration::from_secs(90));
         assert!(args.from.is_some());
@@ -121,5 +153,7 @@ mod tests {
             panic!("expected timeline");
         };
         assert_eq!(args.window, SignedDuration::from_mins(5));
+        assert_eq!(args.format, None);
+        assert!(!args.quiet);
     }
 }

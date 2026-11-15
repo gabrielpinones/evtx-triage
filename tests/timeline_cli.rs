@@ -179,7 +179,7 @@ fn damaged_evtx_gives_a_partial_timeline() {
     let sample = fixtures("format").join("sample_with_a_bad_chunk_magic.evtx");
     let output = timeline(&[sample.to_str().unwrap()]);
     assert_eq!(output.status.code(), Some(2), "{output:?}");
-    assert!(String::from_utf8_lossy(&output.stderr).contains("3 unreadable"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("3 records could not be read"));
 }
 
 #[test]
@@ -198,4 +198,58 @@ fn input_with_no_readable_log_is_a_fatal_error() {
     let output = timeline(&[missing.to_str().unwrap()]);
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("missing.evtx"));
+}
+
+#[test]
+fn table_format_is_plain_text_when_not_on_a_terminal() {
+    let samples = fixtures("attack-samples");
+    let output = timeline(&[samples.to_str().unwrap(), "--format", "table"]);
+    assert_eq!(output.status.code(), Some(0));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.starts_with("TIME (UTC)"));
+    assert!(!text.contains('\u{1b}'), "no ANSI codes in a pipe");
+    assert!(text.contains("! high   log_cleared"));
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(!stderr.contains('\u{1b}'));
+    assert!(
+        stderr.contains("log_cleared"),
+        "summary lists the rules that fired"
+    );
+}
+
+#[test]
+fn quiet_prints_no_summary() {
+    let samples = fixtures("attack-samples");
+    let output = timeline(&[samples.to_str().unwrap(), "--quiet"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    assert_eq!(parse_jsonl(&output.stdout).len(), 52);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_reader_that_stops_early_is_not_an_error() {
+    use std::io::Read;
+    use std::process::Stdio;
+
+    let samples = fixtures("attack-samples");
+    for format in ["jsonl", "csv", "table"] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_evtx-triage"))
+            .args(["timeline", samples.to_str().unwrap(), "--format", format])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        // Read a little, then close the pipe while the writer still has more.
+        let mut stdout = child.stdout.take().unwrap();
+        let mut first = [0u8; 16];
+        stdout.read_exact(&mut first).unwrap();
+        drop(stdout);
+
+        let output = child.wait_with_output().unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!stderr.contains("error:"), "{format}: {stderr}");
+        assert_ne!(output.status.code(), Some(1), "{format}");
+    }
 }

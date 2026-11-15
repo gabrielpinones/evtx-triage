@@ -1,17 +1,20 @@
 //! Timeline pipeline: collect files, read, filter, sort, detect, write.
 
-use std::fmt;
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use anstyle::{AnsiColor, Style};
 use anyhow::Context;
 use jiff::{SignedDuration, Timestamp};
 
 use crate::cli::OutputFormat;
 use crate::detect::{self, DetectOptions};
-use crate::model::TimelineEvent;
+use crate::model::{Severity, TimelineEvent};
 use crate::output;
+use crate::output::table::severity_style;
 use crate::source::{self, ReadOptions};
 
 /// Everything `run_timeline` needs, already parsed from the command line.
@@ -33,7 +36,7 @@ pub struct TimelineOptions {
 }
 
 /// Counters for one run, printed on stderr by `main`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunSummary {
     pub files_read: u64,
     /// Files that are none of the supported formats.
@@ -45,6 +48,8 @@ pub struct RunSummary {
     pub record_errors: u64,
     pub events_written: u64,
     pub events_flagged: u64,
+    /// Flags on the written events, by severity and rule.
+    pub flag_counts: BTreeMap<(Severity, &'static str), u64>,
 }
 
 impl RunSummary {
@@ -54,19 +59,66 @@ impl RunSummary {
     }
 }
 
-impl fmt::Display for RunSummary {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} events ({} flagged) from {} files; {} records seen, {} unreadable; {} files skipped, {} failed",
-            self.events_written,
-            self.events_flagged,
-            self.files_read,
-            self.records_seen,
-            self.record_errors,
-            self.files_skipped,
-            self.files_failed,
-        )
+impl RunSummary {
+    /// The end-of-run report for stderr, one fact per line.
+    ///
+    /// The text carries ANSI styles; print it through `anstream`.
+    pub fn render(&self) -> String {
+        let bold = Style::new().bold();
+        let warn = AnsiColor::Yellow.on_default();
+        let mut out = String::new();
+
+        let _ = write!(
+            out,
+            "{bold}{}{bold:#} from {}",
+            count(self.events_written, "event", "events"),
+            count(self.files_read, "file", "files"),
+        );
+        if self.events_flagged > 0 {
+            let _ = write!(out, ", {bold}{} flagged{bold:#}", self.events_flagged);
+        }
+        out.push('\n');
+
+        // Highest severity first.
+        for ((severity, rule), hits) in self.flag_counts.iter().rev() {
+            let style = severity_style(*severity);
+            let _ = writeln!(
+                out,
+                "  {style}{:<6}{style:#}  {hits:>4}  {rule}",
+                severity.as_str()
+            );
+        }
+
+        if self.files_skipped > 0 {
+            let _ = writeln!(
+                out,
+                "{} skipped: not a supported log format",
+                count(self.files_skipped, "file", "files")
+            );
+        }
+        if self.record_errors > 0 {
+            let _ = writeln!(
+                out,
+                "{warn}{} could not be read: the timeline is incomplete{warn:#}",
+                count(self.record_errors, "record", "records")
+            );
+        }
+        if self.files_failed > 0 {
+            let _ = writeln!(
+                out,
+                "{warn}{} could not be read: the timeline is incomplete{warn:#}",
+                count(self.files_failed, "file", "files")
+            );
+        }
+        out
+    }
+}
+
+fn count(n: u64, singular: &str, plural: &str) -> String {
+    if n == 1 {
+        format!("1 {singular}")
+    } else {
+        format!("{n} {plural}")
     }
 }
 
@@ -119,10 +171,17 @@ pub fn run_timeline(options: &TimelineOptions, out: &mut dyn Write) -> anyhow::R
     match options.format {
         OutputFormat::Jsonl => output::write_jsonl(out, &final_events)?,
         OutputFormat::Csv => output::write_csv(out, &final_events)?,
+        OutputFormat::Table => output::write_table(out, &final_events)?,
     }
 
     summary.events_written = final_events.len() as u64;
     summary.events_flagged = final_events.iter().filter(|e| !e.flags.is_empty()).count() as u64;
+    for flag in final_events.iter().flat_map(|event| &event.flags) {
+        *summary
+            .flag_counts
+            .entry((flag.severity, flag.rule))
+            .or_default() += 1;
+    }
     Ok(summary)
 }
 
